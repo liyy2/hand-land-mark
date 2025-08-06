@@ -1,0 +1,10 @@
+Landmark Detection Summary
+========================================
+Total Frames: 751
+Detection Rate: 15.7%
+Average Confidence: 0.745
+Min Confidence: 0.500
+Max Confidence: 0.993
+Frames with Hands: 751
+Left Hand Detections: 273
+Right Hand Detections: 478
