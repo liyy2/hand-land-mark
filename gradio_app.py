@@ -1447,11 +1447,24 @@ def create_interface():
                             if app.current_video_path:
                                 import subprocess
                                 import threading
+                                import os
+                                
+                                # Check which server file exists - prioritize video editor style
+                                video_editor_server = "video_editor_annotation_server.py"
+                                enhanced_server = "enhanced_annotation_server.py"
+                                basic_server = "video_annotation_server.py"
+                                
+                                if os.path.exists(video_editor_server):
+                                    server_file = video_editor_server
+                                elif os.path.exists(enhanced_server):
+                                    server_file = enhanced_server
+                                else:
+                                    server_file = basic_server
                                 
                                 def run_server():
                                     subprocess.run([
                                         "python", 
-                                        "video_annotation_server.py",
+                                        server_file,
                                         app.current_video_path
                                     ])
                                 
@@ -1459,18 +1472,54 @@ def create_interface():
                                 thread.daemon = True
                                 thread.start()
                                 
-                                return """
-                                <div style='padding: 20px; background: #10b981; color: white; border-radius: 8px;'>
-                                    <h3>✅ Annotation Server Started!</h3>
-                                    <p>Open <a href='http://localhost:5555' target='_blank' style='color: white; text-decoration: underline;'>
-                                    http://localhost:5555</a> in a new browser tab.</p>
-                                    <p>The advanced annotator provides:</p>
+                                if server_file == video_editor_server:
+                                    features_list = """
+                                    <ul>
+                                        <li>🎬 Professional video editor-style interface</li>
+                                        <li>📐 Multi-track timeline (4 tracks)</li>
+                                        <li>✋ Drag & drop timeline segments</li>
+                                        <li>↔️ Resize segments by dragging edges</li>
+                                        <li>✂️ Split, cut, copy, paste operations</li>
+                                        <li>🎨 Color-coded by task type</li>
+                                        <li>🔍 Zoom in/out timeline</li>
+                                        <li>📝 Properties inspector panel</li>
+                                        <li>⌨️ Pro keyboard shortcuts</li>
+                                        <li>🎯 Playhead with timecode display</li>
+                                    </ul>
+                                    """
+                                    server_name = "Video Editor"
+                                elif server_file == enhanced_server:
+                                    features_list = """
+                                    <ul>
+                                        <li>🔥 Movement heatmap visualization</li>
+                                        <li>🏷️ Color-coded task labels</li>
+                                        <li>✏️ Edit existing annotations</li>
+                                        <li>📊 Real-time statistics</li>
+                                        <li>🎯 Timeline visualization</li>
+                                        <li>⌨️ Enhanced keyboard shortcuts</li>
+                                        <li>🔍 Search and filter annotations</li>
+                                        <li>📥 Import/Export (JSON & CSV)</li>
+                                    </ul>
+                                    """
+                                    server_name = "Enhanced"
+                                else:
+                                    features_list = """
                                     <ul>
                                         <li>Real-time video time capture</li>
                                         <li>Keyboard shortcuts (C, S, E, Q)</li>
                                         <li>Automatic time display</li>
                                         <li>Export to JSON</li>
                                     </ul>
+                                    """
+                                    server_name = "Basic"
+                                
+                                return f"""
+                                <div style='padding: 20px; background: linear-gradient(135deg, #10b981 0%, #059669 100%); color: white; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.2);'>
+                                    <h3>✅ {server_name} Annotation Server Started!</h3>
+                                    <p>Open <a href='http://localhost:5555' target='_blank' style='color: white; text-decoration: underline; font-weight: bold;'>
+                                    http://localhost:5555</a> in a new browser tab.</p>
+                                    <p>The {server_name} annotator provides:</p>
+                                    {features_list}
                                 </div>
                                 """
                             else:
