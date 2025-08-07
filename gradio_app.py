@@ -23,7 +23,7 @@ from datetime import datetime
 # Import existing modules
 from unified_landmark_detector import UnifiedLandmarkDetector
 from pd_analysis import PDMovementAnalyzer
-from visualize_pd_analysis import create_comprehensive_visualization, create_time_series_plot
+from scripts.visualize_pd_analysis import create_comprehensive_visualization, create_time_series_plot
 
 class PDAnalysisApp:
     """Main application class for PD movement analysis"""

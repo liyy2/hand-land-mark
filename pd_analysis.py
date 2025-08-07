@@ -49,7 +49,8 @@ class PDMovementAnalyzer:
         print(f"Right hand frames: {len(self.right_hand['frame'].unique())}")
         
     def calculate_tremor_frequency(self, hand: str = 'both', 
-                                  landmark_id: int = None) -> Dict:
+                                  landmark_id: int = None,
+                                  use_com: bool = False) -> Dict:
         """
         Calculate tremor frequency using FFT analysis
         
@@ -60,11 +61,12 @@ class PDMovementAnalyzer:
         Args:
             hand: 'left', 'right', or 'both'
             landmark_id: Specific landmark to analyze (default: index finger tip)
+            use_com: If True, analyze center of mass instead of single landmark
         
         Returns:
             Dictionary with frequency analysis results
         """
-        if landmark_id is None:
+        if landmark_id is None and not use_com:
             landmark_id = self.INDEX_TIP
             
         results = {}
@@ -76,17 +78,40 @@ class PDMovementAnalyzer:
             hands_to_analyze.append(('right', self.right_hand))
             
         for hand_name, hand_data in hands_to_analyze:
-            # Get position data for specific landmark
-            landmark_data = hand_data[hand_data['landmark_id'] == landmark_id].sort_values('frame')
-            
-            if len(landmark_data) < 100:  # Need enough data for FFT
-                print(f"Insufficient data for {hand_name} hand")
-                continue
+            if use_com:
+                # Calculate center of mass for all landmarks
+                com_data = []
+                frames = sorted(hand_data['frame'].unique())
                 
-            # Extract position time series
-            x = landmark_data['x'].values
-            y = landmark_data['y'].values
-            z = landmark_data['z'].values
+                for frame in frames:
+                    frame_data = hand_data[hand_data['frame'] == frame]
+                    if len(frame_data) < 21:  # Need all landmarks
+                        continue
+                    
+                    # Calculate COM
+                    com_x = frame_data['x'].mean()
+                    com_y = frame_data['y'].mean()
+                    com_z = frame_data['z'].mean()
+                    com_data.append([com_x, com_y, com_z])
+                
+                if len(com_data) < 100:
+                    print(f"Insufficient COM data for {hand_name} hand")
+                    continue
+                
+                com_data = np.array(com_data)
+                x, y, z = com_data[:, 0], com_data[:, 1], com_data[:, 2]
+            else:
+                # Get position data for specific landmark
+                landmark_data = hand_data[hand_data['landmark_id'] == landmark_id].sort_values('frame')
+                
+                if len(landmark_data) < 100:  # Need enough data for FFT
+                    print(f"Insufficient data for {hand_name} hand")
+                    continue
+                    
+                # Extract position time series
+                x = landmark_data['x'].values
+                y = landmark_data['y'].values
+                z = landmark_data['z'].values
             
             # Remove trend using detrending
             x_detrended = signal.detrend(x)
@@ -269,6 +294,136 @@ class PDMovementAnalyzer:
             }
             
         return results
+    
+    def calculate_multi_landmark_tremor(self, hand: str = 'both') -> Dict:
+        """
+        Analyze tremor across multiple landmarks for robust detection
+        Uses: wrist, all fingertips, and center of mass
+        
+        Args:
+            hand: 'left', 'right', or 'both'
+            
+        Returns:
+            Dictionary with multi-landmark tremor analysis
+        """
+        # Key landmarks to analyze
+        landmarks_to_analyze = {
+            'wrist': 0,
+            'thumb_tip': 4,
+            'index_tip': 8,
+            'middle_tip': 12,
+            'ring_tip': 16,
+            'pinky_tip': 20,
+            'index_mcp': 5,  # Base of index finger
+            'middle_mcp': 9  # Base of middle finger
+        }
+        
+        results = {}
+        hands_to_analyze = []
+        
+        if hand in ['left', 'both'] and len(self.left_hand) > 0:
+            hands_to_analyze.append(('left', self.left_hand))
+        if hand in ['right', 'both'] and len(self.right_hand) > 0:
+            hands_to_analyze.append(('right', self.right_hand))
+        
+        for hand_name, hand_data in hands_to_analyze:
+            hand_results = {}
+            tremor_frequencies = []
+            tremor_amplitudes = []
+            
+            # Analyze each landmark
+            for landmark_name, landmark_id in landmarks_to_analyze.items():
+                landmark_data = hand_data[hand_data['landmark_id'] == landmark_id].sort_values('frame')
+                
+                if len(landmark_data) < 100:
+                    continue
+                
+                # Get positions
+                x = landmark_data['x'].values
+                y = landmark_data['y'].values
+                z = landmark_data['z'].values
+                
+                # Detrend
+                x_detrended = signal.detrend(x)
+                y_detrended = signal.detrend(y)
+                z_detrended = signal.detrend(z)
+                
+                # FFT analysis
+                freqs, psd_x = signal.welch(x_detrended, self.fps, nperseg=min(256, len(x_detrended)))
+                _, psd_y = signal.welch(y_detrended, self.fps, nperseg=min(256, len(y_detrended)))
+                _, psd_z = signal.welch(z_detrended, self.fps, nperseg=min(256, len(z_detrended)))
+                
+                combined_psd = psd_x + psd_y + psd_z
+                
+                # Find peak in tremor range (3-12 Hz)
+                tremor_range = (freqs >= 3) & (freqs <= 12)
+                if np.any(tremor_range):
+                    peak_idx = np.argmax(combined_psd[tremor_range])
+                    peak_freq = freqs[tremor_range][peak_idx]
+                    peak_power = combined_psd[tremor_range][peak_idx]
+                    
+                    # Calculate amplitude
+                    amplitude = np.sqrt(np.mean(x_detrended**2 + y_detrended**2 + z_detrended**2))
+                    
+                    hand_results[landmark_name] = {
+                        'frequency': peak_freq,
+                        'power': peak_power,
+                        'amplitude': amplitude
+                    }
+                    
+                    tremor_frequencies.append(peak_freq)
+                    tremor_amplitudes.append(amplitude)
+            
+            # Also analyze center of mass
+            com_tremor = self.calculate_tremor_frequency(hand=hand_name, use_com=True)
+            if hand_name in com_tremor:
+                hand_results['center_of_mass'] = {
+                    'frequency': com_tremor[hand_name]['peak_frequency'],
+                    'amplitude': com_tremor[hand_name]['tremor_amplitude'],
+                    'has_tremor': com_tremor[hand_name]['has_tremor']
+                }
+            
+            # Aggregate results
+            if tremor_frequencies:
+                # Consensus frequency (weighted by amplitude)
+                weights = np.array(tremor_amplitudes) / np.sum(tremor_amplitudes)
+                consensus_freq = np.average(tremor_frequencies, weights=weights)
+                
+                # Frequency consistency (how similar are frequencies across landmarks)
+                freq_std = np.std(tremor_frequencies)
+                freq_consistency = 1 - (freq_std / np.mean(tremor_frequencies)) if np.mean(tremor_frequencies) > 0 else 0
+                
+                # Overall tremor detection
+                median_amplitude = np.median(tremor_amplitudes)
+                has_tremor = (consensus_freq >= 3 and consensus_freq <= 12 and 
+                            median_amplitude > 0.005 and freq_consistency > 0.5)
+                
+                results[hand_name] = {
+                    'landmark_results': hand_results,
+                    'consensus_frequency': consensus_freq,
+                    'frequency_consistency': freq_consistency,
+                    'median_amplitude': median_amplitude,
+                    'max_amplitude': np.max(tremor_amplitudes),
+                    'has_tremor': has_tremor,
+                    'tremor_type': self._classify_tremor_type(consensus_freq) if has_tremor else 'none'
+                }
+            else:
+                results[hand_name] = {'has_tremor': False, 'note': 'Insufficient data'}
+        
+        return results
+    
+    def _classify_tremor_type(self, frequency: float) -> str:
+        """Classify tremor type based on frequency"""
+        if 4 <= frequency <= 6:
+            return 'pd_resting'
+        elif 6 < frequency <= 8:
+            return 'pd_action'
+        elif 8 < frequency <= 12:
+            return 'essential_tremor'
+        elif frequency < 4:
+            return 'low_frequency'
+        else:
+            return 'high_frequency'
     
     def calculate_movement_asymmetry(self) -> Dict:
         """

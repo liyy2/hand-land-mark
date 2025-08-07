@@ -2,7 +2,7 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-EDITS SHOULD BE SIMPLE BE FOOLISH
+EDITS SHOULD BE SIMPLE BE FOOLISH. DON"T OVER ENGINEER. ALWAYS STARTS WITH SIMPLE EDITS.
 
 ## Project Overview
 
