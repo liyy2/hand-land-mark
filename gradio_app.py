@@ -13,9 +13,11 @@ import cv2
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
+import subprocess
 import tempfile
 import os
 import json
+import re
 from pathlib import Path
 import shutil
 from datetime import datetime
@@ -42,6 +44,388 @@ class PDAnalysisApp:
         self.current_video_path = None
         self.current_video_duration = 0
         
+    def check_nvidia_gpu(self):
+        """Check if NVIDIA GPU and NVENC are available"""
+        try:
+            # Check for NVIDIA GPU using nvidia-smi
+            result = subprocess.run(['nvidia-smi', '--query-gpu=name', '--format=csv,noheader'], 
+                                  capture_output=True, text=True)
+            if result.returncode == 0 and result.stdout.strip():
+                # Check if ffmpeg has NVENC support
+                result = subprocess.run(['ffmpeg', '-hide_banner', '-encoders'], 
+                                      capture_output=True, text=True)
+                if 'h264_nvenc' in result.stdout:
+                    return True
+        except:
+            pass
+        return False
+
+    def trim_video_to_annotations(self, input_path, frame_ranges, fps, progress=None):
+        """
+        Trim video to only include frames within annotation ranges
+        
+        Args:
+            input_path: Path to input video
+            frame_ranges: List of (start_frame, end_frame) tuples
+            fps: Video frame rate
+            progress: Optional Gradio progress tracker
+            
+        Returns:
+            str: Path to trimmed video
+        """
+        if not frame_ranges:
+            return input_path
+            
+        try:
+            if progress:
+                progress(0, desc="Trimming video to annotation segments...")
+            
+            
+            # Create temp file for trimmed video
+            temp_trimmed = tempfile.NamedTemporaryFile(suffix='_trimmed.mp4', delete=False, dir=self.temp_dir)
+            temp_trimmed_path = temp_trimmed.name
+            temp_trimmed.close()
+            
+            # Convert frame ranges to time ranges
+            time_ranges = [(start/fps, end/fps) for start, end in frame_ranges]
+            
+            # If only one continuous segment, use simple trim
+            if len(time_ranges) == 1:
+                start_time, end_time = time_ranges[0]
+                duration = end_time - start_time
+                
+                cmd = [
+                    'ffmpeg', '-i', input_path,
+                    '-ss', str(start_time),      # Start time
+                    '-t', str(duration),         # Duration
+                    '-map', '0:v:0',             # Map only first video stream
+                    '-map', '0:a?',              # Map all audio streams if exist
+                    '-c', 'copy',                # Copy streams without re-encoding
+                    '-map_metadata', '0',        # Copy all metadata from input
+                    '-avoid_negative_ts', 'make_zero',
+                    '-y',                        # Overwrite output
+                    temp_trimmed_path
+                ]
+                
+                result = subprocess.run(cmd, capture_output=True, text=True)
+                
+                if result.returncode == 0:
+                    if progress:
+                        progress(1.0, desc="Video trimmed successfully!")
+                    return temp_trimmed_path
+                else:
+                    print(f"FFmpeg trim error: {result.stderr}")
+                    
+            # For multiple segments, create concat file
+            else:
+                # Create temporary files for each segment
+                segment_files = []
+                concat_list_path = tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False, dir=self.temp_dir)
+                
+                for i, (start_time, end_time) in enumerate(time_ranges):
+                    if progress:
+                        progress(i / len(time_ranges), desc=f"Extracting segment {i+1}/{len(time_ranges)}...")
+                    
+                    segment_path = str(Path(self.temp_dir) / f"segment_{i}.mp4")
+                    duration = end_time - start_time
+                    
+                    cmd = [
+                        'ffmpeg', '-i', input_path,
+                        '-ss', str(start_time),
+                        '-t', str(duration),
+                        '-map', '0:v:0',             # Map only first video stream
+                        '-map', '0:a?',              # Map all audio streams if exist
+                        '-c', 'copy',
+                        '-map_metadata', '0',        # Copy all metadata from input
+                        '-avoid_negative_ts', 'make_zero',
+                        '-y',
+                        segment_path
+                    ]
+                    
+                    result = subprocess.run(cmd, capture_output=True, text=True)
+                    
+                    if result.returncode == 0:
+                        segment_files.append(segment_path)
+                        concat_list_path.write(f"file '{segment_path}'\n")
+                    else:
+                        print(f"Failed to extract segment {i}: {result.stderr}")
+                
+                concat_list_path.close()
+                
+                # Concatenate all segments
+                if segment_files:
+                    cmd = [
+                        'ffmpeg',
+                        '-f', 'concat',
+                        '-safe', '0',
+                        '-i', concat_list_path.name,
+                        '-c', 'copy',
+                        '-map_metadata', '0',    # Try to preserve metadata from first input
+                        '-y',
+                        temp_trimmed_path
+                    ]
+                    
+                    result = subprocess.run(cmd, capture_output=True, text=True)
+                    
+                    # Clean up segment files
+                    for seg_file in segment_files:
+                        try:
+                            os.remove(seg_file)
+                        except:
+                            pass
+                    os.remove(concat_list_path.name)
+                    
+                    if result.returncode == 0:
+                        if progress:
+                            progress(1.0, desc="Video segments concatenated successfully!")
+                        return temp_trimmed_path
+                    else:
+                        print(f"Concatenation error: {result.stderr}")
+            
+            # If trimming failed, return original
+            return input_path
+            
+        except Exception as e:
+            print(f"Error trimming video: {str(e)}")
+            return input_path
+    
+    def get_video_rotation(self, input_path):
+        """
+        Get video rotation metadata using ffmpeg
+        
+        Args:
+            input_path: Path to input video
+            
+        Returns:
+            int: Rotation angle (0, 90, 180, 270)
+        """
+        try:
+            # Try a simpler ffmpeg command that works better with MOV files
+            cmd = [
+                'ffmpeg', '-i', input_path,
+                '-f', 'null', '-',
+                '-hide_banner',
+                '-loglevel', 'error',
+                '-print_format', 'json',
+                '-show_streams'
+            ]
+            
+            # Use a longer timeout for MOV files
+            timeout = 10 if input_path.lower().endswith('.mov') else 5
+            
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+            
+            # Parse the stderr output which contains rotation info
+            rotation = 0
+            if result.stderr:
+                for line in result.stderr.split('\n'):
+                    # Check for rotation in metadata
+                    if 'rotate' in line.lower():
+                        match = re.search(r'rotate\s*:\s*(\d+)', line)
+                        if match:
+                            rotation = int(match.group(1))
+                            print(f"Found rotation in metadata: {rotation}")
+                            return rotation
+            
+            # If no rotation found in stderr, try parsing stdout for stream info
+            if not rotation and result.stdout:
+                for line in result.stdout.split('\n'):
+                    if 'rotation' in line or 'rotate' in line:
+                        # Try to extract rotation value
+                        match = re.search(r'(\d+)', line)
+                        if match:
+                            rotation = int(match.group(1))
+                            if rotation in [90, 180, 270]:
+                                print(f"Found rotation: {rotation}")
+                                return rotation
+            
+            # Alternative method using OpenCV to check dimensions
+            # Sometimes portrait videos don't have rotation metadata but need to be rotated
+            if rotation == 0:
+                try:
+                    cap = cv2.VideoCapture(input_path)
+                    if cap.isOpened():
+                        width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+                        height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+                        cap.release()
+                        
+                        # Check if this is likely a phone video in portrait that needs rotation
+                        # Common phone resolutions in portrait: 1080x1920, 720x1280, etc.
+                        if width < height and (width, height) in [(1080, 1920), (720, 1280), (540, 960)]:
+                            print(f"Detected likely portrait phone video without rotation metadata: {width}x{height}")
+                            # Don't auto-rotate, just log it
+                except:
+                    pass
+            
+            return rotation
+        except subprocess.TimeoutExpired:
+            print("Timeout while checking video rotation")
+            return 0
+        except Exception as e:
+            print(f"Error getting video rotation: {e}")
+            return 0
+    
+    def convert_to_720p(self, input_path, progress=None):
+        """
+        Convert video to 720p resolution for faster processing
+        Uses GPU acceleration if available, falls back to CPU
+        
+        Args:
+            input_path: Path to input video
+            progress: Optional Gradio progress tracker
+            
+        Returns:
+            str: Path to 720p video, or original path if conversion fails
+        """
+        try:
+            # Check current resolution
+            cap = cv2.VideoCapture(input_path)
+            width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+            height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+            fps = cap.get(cv2.CAP_PROP_FPS)
+            cap.release()
+            
+            # If already 720p or smaller, return original
+            if height <= 720:
+                return input_path
+            
+            if progress:
+                progress(0, desc="Converting video to 720p for optimal processing...")
+            
+            # Create temp file for 720p version
+            temp_720p = tempfile.NamedTemporaryFile(suffix='_720p.mp4', delete=False, dir=self.temp_dir)
+            temp_720p_path = temp_720p.name
+            temp_720p.close()
+            
+            # Note: Rotation is now handled earlier in the pipeline
+            
+            # Check if GPU encoding is available
+            use_gpu = self.check_nvidia_gpu()
+            
+            if use_gpu:
+                print("GPU encoding available - using NVIDIA NVENC")
+                # Try GPU-accelerated encoding first
+                cmd = [
+                    'ffmpeg', '-hwaccel', 'cuda', '-i', input_path,
+                    '-vf', 'scale_cuda=-2:720',  # GPU-accelerated scaling
+                    '-c:v', 'h264_nvenc',        # NVIDIA GPU encoder
+                    '-preset', 'p4',             # Balanced preset for NVENC
+                    '-rc', 'vbr',                # Variable bitrate
+                    '-cq', '23',                 # Quality (similar to CRF)
+                    '-c:a', 'aac',               # Convert audio to AAC
+                    '-b:a', '128k',              # Audio bitrate
+                    '-map', '0:v:0',             # Map only first video stream
+                    '-map', '0:a:0?',            # Map first audio stream if exists
+                    '-map_metadata', '0',        # Copy all metadata from input
+                    '-movflags', '+faststart',   # Optimize for streaming
+                    '-y',                        # Overwrite output
+                    temp_720p_path
+                ]
+                
+                result = subprocess.run(cmd, capture_output=True, text=True)
+                
+                if result.returncode == 0:
+                    if progress:
+                        progress(1.0, desc="720p conversion complete (GPU accelerated)!")
+                    print(f"Video converted from {width}x{height} to 720p using GPU")
+                    # Save encoding method
+                    if hasattr(self, 'current_session') and self.current_session:
+                        with open(self.current_session / "encoding_method.txt", "w") as f:
+                            f.write("GPU")
+                    return temp_720p_path
+                else:
+                    print(f"GPU encoding failed: {result.stderr}")
+                    print("Falling back to CPU encoding...")
+            else:
+                print("GPU encoding not available - using CPU encoding")
+            
+            # CPU encoding (fallback or primary if no GPU)
+            cmd = [
+                'ffmpeg', '-i', input_path,
+                '-vf', 'scale=-2:720',          # -2 maintains aspect ratio and ensures even dimensions
+                '-c:v', 'libx264',              # Use H.264 codec
+                '-preset', 'fast',              # Fast encoding
+                '-crf', '23',                   # Good quality
+                '-c:a', 'aac',                  # Convert audio to AAC (more compatible)
+                '-b:a', '128k',                 # Audio bitrate
+                '-map', '0:v:0',                # Map only first video stream
+                '-map', '0:a:0?',               # Map first audio stream if exists
+                '-map_metadata', '0',           # Copy all metadata from input
+                '-movflags', '+faststart',      # Optimize for streaming
+                '-y',                           # Overwrite output
+                temp_720p_path
+            ]
+            
+            # Run ffmpeg
+            result = subprocess.run(cmd, capture_output=True, text=True)
+            
+            if result.returncode != 0:
+                print(f"FFmpeg error: {result.stderr}")
+                # Fallback to OpenCV if ffmpeg fails
+                return self.convert_to_720p_opencv(input_path, temp_720p_path)
+            
+            if progress:
+                progress(1.0, desc="720p conversion complete!")
+            
+            print(f"Video converted from {width}x{height} to 720p using CPU")
+            # Save encoding method
+            if hasattr(self, 'current_session') and self.current_session:
+                with open(self.current_session / "encoding_method.txt", "w") as f:
+                    f.write("CPU")
+            return temp_720p_path
+            
+        except Exception as e:
+            print(f"Error converting to 720p: {str(e)}")
+            return input_path  # Return original on error
+    
+    def convert_to_720p_opencv(self, input_path, output_path):
+        """
+        Fallback method using OpenCV if ffmpeg is not available
+        
+        Args:
+            input_path: Path to input video
+            output_path: Path for output video
+            
+        Returns:
+            str: Path to converted video or original path on failure
+        """
+        try:
+            cap = cv2.VideoCapture(input_path)
+            
+            # Get original properties
+            orig_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+            orig_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+            fps = cap.get(cv2.CAP_PROP_FPS)
+            fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+            
+            # Calculate new dimensions
+            new_height = 720
+            new_width = int(orig_width * (new_height / orig_height))
+            
+            # Ensure even dimensions for codec compatibility
+            new_width = new_width + (new_width % 2)
+            
+            # Create video writer
+            out = cv2.VideoWriter(output_path, fourcc, fps, (new_width, new_height))
+            
+            while True:
+                ret, frame = cap.read()
+                if not ret:
+                    break
+                
+                # Resize frame
+                resized = cv2.resize(frame, (new_width, new_height), interpolation=cv2.INTER_LANCZOS4)
+                out.write(resized)
+            
+            cap.release()
+            out.release()
+            
+            return output_path
+            
+        except Exception as e:
+            print(f"OpenCV conversion error: {str(e)}")
+            return input_path
+
     def resolve_video_path(self, video_file, video_path_text):
         """
         Resolve video input from either file upload or path text
@@ -119,7 +503,69 @@ class PDAnalysisApp:
         except:
             return False
         
-    def process_video(self, video_file, video_path_text, detection_confidence, enable_face, enhance_contrast, progress=gr.Progress()):
+    def load_annotation_file(self, annotation_file):
+        """Load and parse annotation JSON file"""
+        if annotation_file is None:
+            return None, []
+        
+        try:
+            with open(annotation_file, 'r') as f:
+                data = json.load(f)
+            
+            # Handle different JSON formats
+            if isinstance(data, dict) and 'annotations' in data:
+                # Format: {"video": "...", "annotations": [...]}
+                annotations = data['annotations']
+            elif isinstance(data, list):
+                # Format: direct list of annotations
+                annotations = data
+            else:
+                print(f"Unexpected annotation format: {type(data)}")
+                return None, []
+            
+            # Extract unique annotation labels for selection
+            annotation_choices = []
+            for ann in annotations:
+                label = f"{ann['task']} ({ann['start']:.1f}s - {ann['end']:.1f}s)"
+                if 'side' in ann and ann['side'] not in ['n/a', 'bilateral']:
+                    label += f" - {ann['side']}"
+                elif 'side' in ann and ann['side'] == 'bilateral':
+                    label += " - both hands"
+                    
+                # Add severity if present and non-zero
+                if 'severity' in ann and ann['severity'] > 0:
+                    label += f" [Severity: {ann['severity']}]"
+                    
+                annotation_choices.append((label, ann))
+            
+            return annotations, annotation_choices
+        except Exception as e:
+            print(f"Error loading annotation file: {str(e)}")
+            return None, []
+    
+    def filter_frames_by_annotations(self, total_frames, fps, selected_annotations):
+        """Create frame ranges based on selected annotations"""
+        if not selected_annotations:
+            return None
+        
+        frame_ranges = []
+        for ann in selected_annotations:
+            start_frame = int(ann['start'] * fps)
+            end_frame = int(ann['end'] * fps)
+            frame_ranges.append((start_frame, end_frame))
+        
+        # Merge overlapping ranges
+        frame_ranges.sort(key=lambda x: x[0])
+        merged_ranges = []
+        for start, end in frame_ranges:
+            if merged_ranges and start <= merged_ranges[-1][1]:
+                merged_ranges[-1] = (merged_ranges[-1][0], max(merged_ranges[-1][1], end))
+            else:
+                merged_ranges.append((start, end))
+        
+        return merged_ranges
+    
+    def process_video(self, video_file, video_path_text, detection_confidence, enable_face, enhance_contrast, compress_video=True, annotation_data=None, progress=gr.Progress()):
         """
         Process uploaded video for hand tracking
         
@@ -129,6 +575,8 @@ class PDAnalysisApp:
             detection_confidence: Confidence threshold for detection
             enable_face: Whether to detect face landmarks
             enhance_contrast: Whether to apply contrast enhancement
+            compress_video: Whether to compress video to 720p
+            annotation_data: Tuple of (annotation_file, selected_indices) or None
             progress: Gradio progress tracker
             
         Returns:
@@ -151,14 +599,131 @@ class PDAnalysisApp:
             return None, None, f"Error accessing video file: {str(e)}"
         
         try:
+            # Create preprocessing log
+            preprocessing_log = []
+            
             # Create session directory
             session_id = datetime.now().strftime("%Y%m%d_%H%M%S")
             session_dir = Path(self.temp_dir) / session_id
             session_dir.mkdir(exist_ok=True)
             self.current_session = session_dir
+            preprocessing_log.append(f"✅ Created session directory: {session_id}")
+            
+            # Get original video info
+            progress(0, desc="Analyzing video properties...")
+            cap = cv2.VideoCapture(video_path)
+            orig_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+            orig_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+            orig_fps = cap.get(cv2.CAP_PROP_FPS)
+            orig_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+            orig_duration = orig_frames / orig_fps if orig_fps > 0 else 0
+            cap.release()
+            
+            preprocessing_log.append(f"📹 Original video: {orig_width}x{orig_height} @ {orig_fps:.2f} FPS")
+            preprocessing_log.append(f"⏱️ Duration: {orig_duration:.2f} seconds ({orig_frames} frames)")
+            
+            # Check video rotation metadata (but don't apply it)
+            progress(0.01, desc="Checking video metadata...")
+            rotation = self.get_video_rotation(video_path)
+            processing_path = video_path
+            
+            # Log dimensions and rotation info
+            preprocessing_log.append(f"📐 Video dimensions: {orig_width}x{orig_height}")
+            
+            if rotation != 0:
+                preprocessing_log.append(f"🔄 Video has {rotation}° rotation metadata (processing as-is)")
+                # Note: We're NOT applying rotation - MediaPipe works fine regardless of orientation
+            
+            # Determine display orientation (considering rotation metadata)
+            if rotation in [90, 270]:
+                # Video will display as portrait when rotation is applied by player
+                display_orientation = "portrait" if orig_width > orig_height else "landscape"
+            else:
+                # Video displays as stored
+                display_orientation = "portrait" if orig_height > orig_width else "landscape"
+            
+            preprocessing_log.append(f"📱 Display orientation: {display_orientation}")
+            
+            # Process annotation filtering if provided
+            frame_ranges = None
+            
+            if annotation_data and annotation_data[0] is not None:
+                annotation_file, selected_indices = annotation_data
+                try:
+                    annotations, choices = self.load_annotation_file(annotation_file)
+                    if annotations and selected_indices:
+                        # Get selected annotations
+                        selected_annotations = [annotations[i] for i in selected_indices if i < len(annotations)]
+                        frame_ranges = self.filter_frames_by_annotations(orig_frames, orig_fps, selected_annotations)
+                        
+                        if frame_ranges:
+                            total_annotation_frames = sum(end - start + 1 for start, end in frame_ranges)
+                            preprocessing_log.append(f"📝 Using {len(selected_annotations)} annotation segments")
+                            preprocessing_log.append(f"   • Processing {total_annotation_frames}/{orig_frames} frames ({100*total_annotation_frames/orig_frames:.1f}%)")
+                            for i, ann in enumerate(selected_annotations):
+                                preprocessing_log.append(f"   • {ann['task']} ({ann['start']:.1f}s - {ann['end']:.1f}s)")
+                            
+                            # Trim video to annotation segments
+                            progress(0.04, desc="Trimming video to annotation segments...")
+                            orig_processing_path = processing_path
+                            processing_path = self.trim_video_to_annotations(video_path, frame_ranges, orig_fps, progress)
+                            
+                            if processing_path != orig_processing_path:
+                                preprocessing_log.append(f"✂️ Video trimmed to annotation segments")
+                                
+                                # Update video properties after trimming
+                                cap = cv2.VideoCapture(processing_path)
+                                new_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+                                new_duration = new_frames / orig_fps if orig_fps > 0 else 0
+                                cap.release()
+                                preprocessing_log.append(f"   • Trimmed duration: {new_duration:.2f} seconds ({new_frames} frames)")
+                                
+                                # Update frame ranges to be relative to trimmed video
+                                frame_ranges = None  # No need to filter frames anymore, video is already trimmed
+                            
+                except Exception as e:
+                    preprocessing_log.append(f"⚠️ Error processing annotations: {str(e)}")
+                    frame_ranges = None
+            
+            # Convert to 720p if needed and enabled
+            if compress_video:
+                progress(0.05, desc="Checking video resolution for compression...")
+                
+                # Get current video dimensions (might be trimmed)
+                cap = cv2.VideoCapture(processing_path)
+                current_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+                cap.release()
+                
+                if current_height > 720:
+                    preprocessing_log.append(f"🔄 Video height ({current_height}p) > 720p, compression needed")
+                    prev_path = processing_path
+                    processing_path = self.convert_to_720p(processing_path, progress)
+                    if processing_path != prev_path:
+                        # Get compressed video info
+                        cap = cv2.VideoCapture(processing_path)
+                        new_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+                        new_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+                        cap.release()
+                        preprocessing_log.append(f"✅ Compressed to: {new_width}x{new_height}")
+                        
+                        # Check which encoding was used
+                        encoding_file = self.current_session / "encoding_method.txt"
+                        if encoding_file.exists():
+                            with open(encoding_file, "r") as f:
+                                encoding_method = f.read().strip()
+                            if encoding_method == "GPU":
+                                preprocessing_log.append("🚀 Used GPU acceleration (NVIDIA NVENC)")
+                            else:
+                                preprocessing_log.append("💻 Used CPU encoding (libx264)")
+                        else:
+                            preprocessing_log.append("💻 Used CPU encoding (libx264)")
+                else:
+                    preprocessing_log.append(f"✅ Video already ≤720p ({current_height}p), no compression needed")
+            else:
+                preprocessing_log.append("⏭️ Video compression disabled by user")
             
             # Initialize progress
-            progress(0, desc="Initializing detector...")
+            progress(0.1, desc="Initializing landmark detector...")
             
             # Initialize detector with holistic model
             detector = UnifiedLandmarkDetector(
@@ -169,24 +734,34 @@ class PDAnalysisApp:
                 hand_tracking_confidence=detection_confidence
             )
             
-            # Get video info
-            cap = cv2.VideoCapture(video_path)
+            preprocessing_log.append(f"✅ Initialized landmark detector")
+            preprocessing_log.append(f"   • Hand detection: Enabled (confidence: {detection_confidence})")
+            preprocessing_log.append(f"   • Face detection: {'Enabled' if enable_face else 'Disabled'}")
+            preprocessing_log.append(f"   • Contrast enhancement: {'Enabled' if enhance_contrast else 'Disabled'}")
+            
+            # Get video info from final processing path (after trim/compress)
+            cap = cv2.VideoCapture(processing_path)
             total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
             fps = cap.get(cv2.CAP_PROP_FPS)
             width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
             height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
             cap.release()
             
+            preprocessing_log.append(f"📊 Final video for processing: {width}x{height}, {total_frames} frames @ {fps:.2f} FPS")
+            
             # Define output paths
             output_video = str(session_dir / "tracked_video.mp4")
             output_csv = str(session_dir / "landmarks.csv")
             
             # Process video with progress updates
-            progress(0.1, desc=f"Processing {total_frames} frames...")
+            if annotation_data and annotation_data[0] is not None:
+                progress(0.2, desc=f"Processing trimmed video: {total_frames} frames...")
+            else:
+                progress(0.2, desc=f"Processing {total_frames} frames...")
             
             # Custom processing with progress callback
             landmarks_data = []
-            cap = cv2.VideoCapture(video_path)
+            cap = cv2.VideoCapture(processing_path)
             
             # Video writer
             fourcc = cv2.VideoWriter_fourcc(*'mp4v')
@@ -230,7 +805,7 @@ class PDAnalysisApp:
                                 'x_pixel': int(landmark['x'] * width),
                                 'y_pixel': int(landmark['y'] * height)
                             })
-                    
+                        
                     # Process face if enabled
                     if enable_face:
                         for face in landmarks_dict.get('faces', []):
@@ -260,8 +835,9 @@ class PDAnalysisApp:
             df = pd.DataFrame(landmarks_data)
             df.to_csv(output_csv, index=False)
             
-            # Generate summary
-            summary = self.generate_tracking_summary(df, fps, total_frames)
+            # Generate summary with preprocessing log
+            preprocessing_log.append(f"✅ Processing complete!")
+            summary = self.generate_tracking_summary(df, fps, total_frames, preprocessing_log)
             
             progress(1.0, desc="Processing complete!")
             
@@ -270,8 +846,8 @@ class PDAnalysisApp:
         except Exception as e:
             return None, None, f"Error processing video: {str(e)}"
     
-    def generate_tracking_summary(self, df, fps, total_frames):
-        """Generate summary statistics for tracking results"""
+    def generate_tracking_summary(self, df, fps, total_frames, preprocessing_log=None):
+        """Generate summary statistics for tracking results with preprocessing log"""
         if df.empty:
             return "❌ No landmarks detected in the video."
         
@@ -289,7 +865,22 @@ class PDAnalysisApp:
                 <h3 style="margin: 0; display: flex; align-items: center; gap: 0.5rem;">
                     <span>📊</span> Tracking Summary
                 </h3>
-            </div>
+            </div>"""
+        
+        # Add preprocessing log if available
+        if preprocessing_log:
+            summary += """
+            <div style="background: #f8f9fa; border: 1px solid #e2e8f0; border-radius: 8px; padding: 1rem; margin-bottom: 1rem;">
+                <h4 style="color: #4a5568; margin-top: 0;">🔧 Preprocessing Steps</h4>
+                <div style="font-family: 'Courier New', monospace; font-size: 0.9rem; line-height: 1.8;">
+            """
+            for log_entry in preprocessing_log:
+                summary += f"    <div>{log_entry}</div>\n"
+            summary += """
+                </div>
+            </div>"""
+        
+        summary += f"""
             
             <div style="background: white; border: 1px solid #e2e8f0; border-radius: 8px; padding: 1rem; margin-bottom: 1rem;">
                 <h4 style="color: #4a5568; margin-top: 0;">📹 Video Information</h4>
@@ -877,14 +1468,14 @@ class PDAnalysisApp:
         plt.tight_layout()
         return fig
     
-    def process_for_comparison(self, video_file, video_path_text, session_name, detection_confidence=0.3, enable_face=False, enhance_contrast=False, progress=gr.Progress()):
+    def process_for_comparison(self, video_file, video_path_text, session_name, detection_confidence=0.3, enable_face=False, enhance_contrast=False, compress_video=True, annotation_data=None, progress=gr.Progress()):
         """
         Process video for comparative analysis, storing results in session
         """
         try:
             # Process video using existing method
             output_video, csv_path, summary = self.process_video(
-                video_file, video_path_text, detection_confidence, enable_face, enhance_contrast, progress
+                video_file, video_path_text, detection_confidence, enable_face, enhance_contrast, compress_video, annotation_data, progress
             )
             
             if csv_path:
@@ -1441,6 +2032,131 @@ def create_interface():
                                 value=False,
                                 info="Apply contrast enhancement for better detection in poor lighting"
                             )
+                            
+                            compress_checkbox = gr.Checkbox(
+                                label="Compress to 720p",
+                                value=True,
+                                info="Convert video to 720p for faster processing (GPU accelerated if available)"
+                            )
+                        
+                        with gr.Accordion("📝 Annotation Filtering (Optional)", open=False):
+                            gr.Markdown("""
+                            **Filter processing to specific annotated segments:**
+                            Upload an annotation JSON file or provide a file path, then select which segments to process.
+                            Only frames within the selected time ranges will be analyzed.
+                            """)
+                            
+                            with gr.Tabs():
+                                with gr.TabItem("📤 Upload File"):
+                                    annotation_file = gr.File(
+                                        label="Upload Annotation JSON",
+                                        file_types=[".json"],
+                                        type="filepath"
+                                    )
+                                
+                                with gr.TabItem("📝 File Path"):
+                                    annotation_path_input = gr.Textbox(
+                                        label="Annotation File Path",
+                                        placeholder="/path/to/annotations.json",
+                                        info="Enter the full path to your annotation JSON file"
+                                    )
+                            
+                            annotation_segments = gr.CheckboxGroup(
+                                label="Select Segments to Process",
+                                choices=[],
+                                value=[],
+                                visible=False
+                            )
+                            
+                            annotation_summary = gr.Markdown(
+                                value="",
+                                visible=False
+                            )
+                            
+                            # State to store annotations data and file path
+                            annotations_data = gr.State([])
+                            annotation_file_path = gr.State(None)
+                            
+                            def update_annotation_choices(annotation_file, annotation_path):
+                                """Update checkbox choices when annotation file is uploaded or path provided"""
+                                # Priority: file upload first, then path
+                                file_to_load = annotation_file if annotation_file is not None else annotation_path
+                                
+                                if not file_to_load:
+                                    return gr.update(choices=[], value=[], visible=False), gr.update(visible=False), [], None
+                                
+                                # Validate file exists if using path
+                                if annotation_file is None and annotation_path:
+                                    import os
+                                    if not os.path.exists(annotation_path):
+                                        return gr.update(choices=[], value=[], visible=False), gr.update(value=f"❌ File not found: {annotation_path}", visible=True), [], None
+                                
+                                annotations, choices = app.load_annotation_file(file_to_load)
+                                if not annotations:
+                                    return gr.update(choices=[], value=[], visible=False), gr.update(value="❌ Invalid annotation file format", visible=True), [], None
+                                
+                                # Create choice labels
+                                choice_labels = []
+                                for i, (label, ann) in enumerate(choices):
+                                    choice_labels.append(label)
+                                
+                                # Create summary
+                                total_duration = sum(ann['end'] - ann['start'] for _, ann in choices)
+                                summary = f"**Found {len(annotations)} annotation(s)** covering {total_duration:.1f} seconds total"
+                                
+                                # Select all by default
+                                return (
+                                    gr.update(
+                                        choices=choice_labels,
+                                        value=choice_labels,
+                                        visible=True
+                                    ),
+                                    gr.update(value=summary, visible=True),
+                                    annotations,
+                                    file_to_load  # Store the file path
+                                )
+                            
+                            # Update choices when file is uploaded or path is entered
+                            annotation_file.change(
+                                fn=update_annotation_choices,
+                                inputs=[annotation_file, annotation_path_input],
+                                outputs=[annotation_segments, annotation_summary, annotations_data, annotation_file_path]
+                            )
+                            
+                            annotation_path_input.change(
+                                fn=update_annotation_choices,
+                                inputs=[annotation_file, annotation_path_input],
+                                outputs=[annotation_segments, annotation_summary, annotations_data, annotation_file_path]
+                            )
+                            
+                            # Add dynamic summary update when selection changes
+                            def update_selection_summary(selected, annotations_data):
+                                """Update summary when selection changes"""
+                                if not selected or not annotations_data:
+                                    return gr.update(value="**No segments selected**", visible=True)
+                                
+                                selected_duration = 0
+                                for i, ann in enumerate(annotations_data):
+                                    label = f"{ann['task']} ({ann['start']:.1f}s - {ann['end']:.1f}s)"
+                                    if 'side' in ann and ann['side'] not in ['n/a', 'bilateral']:
+                                        label += f" - {ann['side']}"
+                                    elif 'side' in ann and ann['side'] == 'bilateral':
+                                        label += " - both hands"
+                                    if 'severity' in ann and ann['severity'] > 0:
+                                        label += f" [Severity: {ann['severity']}]"
+                                    
+                                    if label in selected:
+                                        selected_duration += ann['end'] - ann['start']
+                                
+                                total_duration = sum(ann['end'] - ann['start'] for ann in annotations_data)
+                                summary = f"**Selected {len(selected)}/{len(annotations_data)} segment(s)** covering {selected_duration:.1f}s of {total_duration:.1f}s total"
+                                return gr.update(value=summary)
+                            
+                            annotation_segments.change(
+                                fn=update_selection_summary,
+                                inputs=[annotation_segments, annotations_data],
+                                outputs=[annotation_summary]
+                            )
                         
                         process_btn = gr.Button("🚀 Process Video", variant="primary", size="lg")
                     
@@ -1491,6 +2207,7 @@ def create_interface():
                             )
                             video1_face = gr.Checkbox(label="Include Face", value=False)
                             video1_contrast = gr.Checkbox(label="Enhance Contrast", value=False)
+                            video1_compress = gr.Checkbox(label="Compress to 720p", value=True)
                         
                         process_video1_btn = gr.Button("Process Video 1", variant="secondary")
                         video1_output = gr.Video(label="Tracked Video 1", visible=False)
@@ -1516,6 +2233,7 @@ def create_interface():
                             )
                             video2_face = gr.Checkbox(label="Include Face", value=False)
                             video2_contrast = gr.Checkbox(label="Enhance Contrast", value=False)
+                            video2_compress = gr.Checkbox(label="Compress to 720p", value=True)
                         
                         process_video2_btn = gr.Button("Process Video 2", variant="secondary")
                         video2_output = gr.Video(label="Tracked Video 2", visible=False)
@@ -2001,9 +2719,23 @@ def create_interface():
             outputs=[path_status]
         )
         
+        def prepare_annotation_data(annotation_file_path, selected_segments, annotations_data):
+            """Prepare annotation data for processing"""
+            if annotation_file_path is None or not selected_segments:
+                return None
+            
+            # Find indices of selected segments
+            selected_indices = []
+            for i, (label, ann) in enumerate(app.load_annotation_file(annotation_file_path)[1]):
+                if label in selected_segments:
+                    selected_indices.append(i)
+            
+            return (annotation_file_path, selected_indices)
+        
         process_btn.click(
-            fn=app.process_video,
-            inputs=[video_input, video_path_input, confidence_slider, face_checkbox, contrast_checkbox],
+            fn=lambda *args: app.process_video(*args[:6], prepare_annotation_data(args[6], args[7], args[8])),
+            inputs=[video_input, video_path_input, confidence_slider, face_checkbox, contrast_checkbox, compress_checkbox,
+                   annotation_file_path, annotation_segments, annotations_data],
             outputs=[output_video, csv_output, tracking_summary]
         ).then(
             fn=lambda x: gr.update(visible=True, value=x),
@@ -2018,9 +2750,9 @@ def create_interface():
         )
         
         # Comparative analysis event handlers
-        def process_video1_wrapper(video_file, video_path, conf, face, contrast):
+        def process_video1_wrapper(video_file, video_path, conf, face, contrast, compress):
             output_video, csv, summary = app.process_for_comparison(
-                video_file, video_path, 'video1', conf, face, contrast
+                video_file, video_path, 'video1', conf, face, contrast, compress
             )
             return (
                 output_video,
@@ -2029,9 +2761,9 @@ def create_interface():
                 True if csv else False  # Update processed state
             )
         
-        def process_video2_wrapper(video_file, video_path, conf, face, contrast):
+        def process_video2_wrapper(video_file, video_path, conf, face, contrast, compress):
             output_video, csv, summary = app.process_for_comparison(
-                video_file, video_path, 'video2', conf, face, contrast
+                video_file, video_path, 'video2', conf, face, contrast, compress
             )
             return (
                 output_video,
@@ -2050,7 +2782,7 @@ def create_interface():
         # Process video 1
         process_video1_btn.click(
             fn=process_video1_wrapper,
-            inputs=[video1_input, video1_path_input, video1_confidence, video1_face, video1_contrast],
+            inputs=[video1_input, video1_path_input, video1_confidence, video1_face, video1_contrast, video1_compress],
             outputs=[video1_output, video1_output, video1_summary, video1_processed]
         ).then(
             fn=update_compare_button,
@@ -2061,7 +2793,7 @@ def create_interface():
         # Process video 2
         process_video2_btn.click(
             fn=process_video2_wrapper,
-            inputs=[video2_input, video2_path_input, video2_confidence, video2_face, video2_contrast],
+            inputs=[video2_input, video2_path_input, video2_confidence, video2_face, video2_contrast, video2_compress],
             outputs=[video2_output, video2_output, video2_summary, video2_processed]
         ).then(
             fn=update_compare_button,
@@ -2095,6 +2827,9 @@ def create_interface():
                 # Validate the video file
                 if not app.validate_video_file(video_path):
                     return None, None, f"<p>Invalid or unsupported video file: {video_path}</p>", None
+                    
+                # Convert to 720p if needed
+                video_path = app.convert_to_720p(video_path)
                 
             except FileNotFoundError as e:
                 return None, None, f"<p style='color: red;'>{str(e)}</p>", None

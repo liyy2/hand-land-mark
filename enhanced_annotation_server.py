@@ -21,6 +21,7 @@ import shutil
 import base64
 from io import BytesIO
 from unified_landmark_detector import UnifiedLandmarkDetector
+import sys
 
 app = Flask(__name__)
 CORS(app)
@@ -28,6 +29,8 @@ CORS(app)
 # Store annotations and analysis data in memory
 annotations = []
 current_video_path = None
+original_video_path = None  # Store the original video path
+original_video_name = None  # Store the original video name
 landmark_data = None
 heatmap_cache = {}
 
@@ -1070,10 +1073,16 @@ def clear_annotations():
 
 @app.route('/save_annotations', methods=['POST'])
 def save_annotations():
-    filename = f"annotations_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+    # Use original video name for the annotation file
+    if original_video_name:
+        base_name = os.path.splitext(original_video_name)[0]
+        filename = f"{base_name}_annotations_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+    else:
+        filename = f"annotations_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+    
     with open(filename, 'w') as f:
         json.dump({
-            'video': current_video_path,
+            'video': original_video_path if original_video_path else current_video_path,
             'annotations': annotations,
             'created': datetime.now().isoformat()
         }, f, indent=2)
@@ -1081,15 +1090,22 @@ def save_annotations():
 
 @app.route('/export_annotations')
 def export_annotations():
+    # Use original video name for the download file
+    if original_video_name:
+        base_name = os.path.splitext(original_video_name)[0]
+        download_name = f"{base_name}_annotations.json"
+    else:
+        download_name = 'annotations.json'
+    
     data = {
-        'video': current_video_path,
+        'video': original_video_path if original_video_path else current_video_path,
         'annotations': annotations,
         'created': datetime.now().isoformat()
     }
     temp_file = tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False)
     json.dump(data, temp_file, indent=2)
     temp_file.close()
-    return send_file(temp_file.name, as_attachment=True, download_name='annotations.json')
+    return send_file(temp_file.name, as_attachment=True, download_name=download_name)
 
 @app.route('/export_csv')
 def export_csv():
@@ -1269,14 +1285,104 @@ def process_video_landmarks(video_path):
         print(f"Error processing video: {e}")
         landmark_data = None
 
+def convert_to_720p(input_path, output_dir=None):
+    """Convert video to 720p resolution for better performance"""
+    # Open video
+    cap = cv2.VideoCapture(input_path)
+    if not cap.isOpened():
+        raise ValueError(f"Cannot open video file: {input_path}")
+    
+    # Get video properties
+    fps = int(cap.get(cv2.CAP_PROP_FPS))
+    width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+    height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+    
+    print(f"Original video resolution: {width}x{height}")
+    
+    # Check if conversion is needed
+    if height <= 720:
+        print(f"Video is already {height}p, no conversion needed")
+        cap.release()
+        return input_path
+    
+    # Calculate new dimensions maintaining aspect ratio
+    aspect_ratio = width / height
+    if aspect_ratio > 16/9:  # Wider than 16:9
+        new_width = 1280
+        new_height = int(1280 / aspect_ratio)
+    else:  # Taller than or equal to 16:9
+        new_height = 720
+        new_width = int(720 * aspect_ratio)
+    
+    # Ensure dimensions are even (required for some codecs)
+    new_width = new_width if new_width % 2 == 0 else new_width - 1
+    new_height = new_height if new_height % 2 == 0 else new_height - 1
+    
+    print(f"Converting to: {new_width}x{new_height}")
+    
+    # Create output path
+    if output_dir is None:
+        output_dir = tempfile.mkdtemp(prefix="video_720p_")
+    
+    base_name = os.path.basename(input_path)
+    name, ext = os.path.splitext(base_name)
+    output_path = os.path.join(output_dir, f"{name}_720p{ext}")
+    
+    # Setup video writer with H264 codec for better compatibility
+    fourcc = cv2.VideoWriter_fourcc(*'H264')
+    out = cv2.VideoWriter(output_path, fourcc, fps, (new_width, new_height))
+    
+    # If H264 fails, try mp4v
+    if not out.isOpened():
+        fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+        out = cv2.VideoWriter(output_path, fourcc, fps, (new_width, new_height))
+    
+    # Process frames
+    frame_count = 0
+    print("Converting video to 720p...")
+    
+    while True:
+        ret, frame = cap.read()
+        if not ret:
+            break
+        
+        # Resize frame
+        resized_frame = cv2.resize(frame, (new_width, new_height), interpolation=cv2.INTER_AREA)
+        out.write(resized_frame)
+        
+        frame_count += 1
+        if frame_count % 30 == 0:
+            progress = (frame_count / total_frames) * 100
+            sys.stdout.write(f"\rProgress: {progress:.1f}%")
+            sys.stdout.flush()
+    
+    # Cleanup
+    cap.release()
+    out.release()
+    cv2.destroyAllWindows()
+    
+    print(f"\nConversion complete! Saved to: {output_path}")
+    return output_path
+
 def start_server(video_path):
-    global current_video_path
-    current_video_path = video_path
+    global current_video_path, original_video_path, original_video_name
+    
+    # Store original video information
+    original_video_path = os.path.abspath(video_path)
+    original_video_name = os.path.basename(video_path)
+    
+    # Convert video to 720p if needed
+    print("Checking video resolution...")
+    converted_path = convert_to_720p(video_path)
+    current_video_path = converted_path
     
     # Process video for landmarks (optional, for heatmap)
-    # process_video_landmarks(video_path)
+    # process_video_landmarks(current_video_path)
     
-    print(f"Starting enhanced annotation server for video: {video_path}")
+    print(f"Starting enhanced annotation server")
+    print(f"Original video: {original_video_path}")
+    print(f"Using processed video: {current_video_path}")
     print("Open http://localhost:5555 in your browser")
     app.run(host='0.0.0.0', port=5555, debug=False)
 
