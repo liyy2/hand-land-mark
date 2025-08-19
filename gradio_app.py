@@ -146,7 +146,9 @@ class PDAnalysisApp:
                     
                     if result.returncode == 0:
                         segment_files.append(segment_path)
-                        concat_list_path.write(f"file '{segment_path}'\n")
+                        # Escape single quotes in path for ffmpeg concat format
+                        escaped_path = segment_path.replace("'", "'\\''")
+                        concat_list_path.write(f"file '{escaped_path}'\n")
                     else:
                         print(f"Failed to extract segment {i}: {result.stderr}")
                 
