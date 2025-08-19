@@ -42,12 +42,90 @@ class PDAnalysisApp:
         self.current_video_path = None
         self.current_video_duration = 0
         
-    def process_video(self, video_path, detection_confidence, enable_face, enhance_contrast, progress=gr.Progress()):
+    def resolve_video_path(self, video_file, video_path_text):
+        """
+        Resolve video input from either file upload or path text
+        
+        Args:
+            video_file: Gradio file upload object (can be None)
+            video_path_text: Text input with file path (can be None or empty)
+            
+        Returns:
+            str: Resolved file path, or None if no valid input
+        """
+        # Priority: file upload first, then path text
+        if video_file is not None:
+            return video_file
+        elif video_path_text and video_path_text.strip():
+            path = video_path_text.strip()
+            if not os.path.exists(path):
+                raise FileNotFoundError(f"File not found: {path}")
+            
+            # Check if the file is outside allowed directories
+            # Gradio allows files in: current working directory, temp directory
+            current_dir = os.getcwd()
+            temp_dir = tempfile.gettempdir()
+            
+            abs_path = os.path.abspath(path)
+            
+            # If file is in allowed directories, return as-is
+            if (abs_path.startswith(current_dir) or 
+                abs_path.startswith(temp_dir) or
+                abs_path.startswith(self.temp_dir)):
+                return path
+            
+            # Otherwise, copy to our temp directory to make it accessible
+            filename = os.path.basename(path)
+            # Add timestamp to avoid conflicts
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            safe_filename = f"{timestamp}_{filename}"
+            temp_path = os.path.join(self.temp_dir, safe_filename)
+            
+            print(f"Copying external file to temp directory: {path} -> {temp_path}")
+            shutil.copy2(path, temp_path)
+            
+            return temp_path
+        else:
+            return None
+    
+    def validate_video_file(self, file_path):
+        """
+        Validate that the file is a supported video format
+        
+        Args:
+            file_path: Path to video file
+            
+        Returns:
+            bool: True if valid video file
+        """
+        if not file_path or not os.path.exists(file_path):
+            return False
+            
+        # Check file extension
+        valid_extensions = {'.mp4', '.avi', '.mov', '.mkv', '.flv', '.wmv', '.webm'}
+        file_ext = Path(file_path).suffix.lower()
+        
+        if file_ext not in valid_extensions:
+            return False
+            
+        # Try to open with OpenCV to verify it's a valid video
+        try:
+            cap = cv2.VideoCapture(file_path)
+            if not cap.isOpened():
+                return False
+            ret, frame = cap.read()
+            cap.release()
+            return ret  # Returns True if we can read at least one frame
+        except:
+            return False
+        
+    def process_video(self, video_file, video_path_text, detection_confidence, enable_face, enhance_contrast, progress=gr.Progress()):
         """
         Process uploaded video for hand tracking
         
         Args:
-            video_path: Path to uploaded video
+            video_file: Gradio file upload object (can be None)
+            video_path_text: Text input with file path (can be None or empty)
             detection_confidence: Confidence threshold for detection
             enable_face: Whether to detect face landmarks
             enhance_contrast: Whether to apply contrast enhancement
@@ -56,8 +134,21 @@ class PDAnalysisApp:
         Returns:
             Tuple of (output_video_path, csv_path, summary_text)
         """
-        if video_path is None:
-            return None, None, "Please upload a video first."
+        try:
+            # Resolve video path from either upload or text input
+            video_path = self.resolve_video_path(video_file, video_path_text)
+            
+            if video_path is None:
+                return None, None, "Please upload a video file or provide a valid video path."
+            
+            # Validate the video file
+            if not self.validate_video_file(video_path):
+                return None, None, f"Invalid or unsupported video file: {video_path}"
+        
+        except FileNotFoundError as e:
+            return None, None, str(e)
+        except Exception as e:
+            return None, None, f"Error accessing video file: {str(e)}"
         
         try:
             # Create session directory
@@ -786,17 +877,14 @@ class PDAnalysisApp:
         plt.tight_layout()
         return fig
     
-    def process_for_comparison(self, video_path, session_name, detection_confidence=0.3, enable_face=False, enhance_contrast=False, progress=gr.Progress()):
+    def process_for_comparison(self, video_file, video_path_text, session_name, detection_confidence=0.3, enable_face=False, enhance_contrast=False, progress=gr.Progress()):
         """
         Process video for comparative analysis, storing results in session
         """
-        if video_path is None:
-            return None, None, f"Please upload a video for {session_name}"
-        
         try:
             # Process video using existing method
             output_video, csv_path, summary = self.process_video(
-                video_path, detection_confidence, enable_face, enhance_contrast, progress
+                video_file, video_path_text, detection_confidence, enable_face, enhance_contrast, progress
             )
             
             if csv_path:
@@ -1299,8 +1387,15 @@ def create_interface():
         gr.Markdown("""
         # 🏥 Parkinson's Disease Movement Analysis System
         
-        Upload a video to analyze hand movements for Parkinson's Disease biomarkers including tremor, 
-        bradykinesia, and finger tapping patterns.
+        Analyze hand movements for Parkinson's Disease biomarkers including tremor, bradykinesia, and finger tapping patterns.
+        
+        **📁 Video Input Options:**
+        - **Upload File:** Use the file browser to select a video from your device
+        - **File Path:** Enter the full path to a video file (ideal for cloud/server environments)
+          - Files outside allowed directories will be automatically copied to temp storage
+          - Supported paths: `/gpfs`, `/data`, `/home`, `/mnt`, `/opt`, `/scratch`, current directory
+        
+        **Supported formats:** MP4, AVI, MOV, MKV, FLV, WMV, WebM
         """)
         
         with gr.Tabs():
@@ -1308,7 +1403,25 @@ def create_interface():
             with gr.TabItem("📹 Video Processing"):
                 with gr.Row():
                     with gr.Column(scale=1):
-                        video_input = gr.Video(label="Upload Video")
+                        gr.Markdown("### 📁 Video Input")
+                        gr.Markdown("Choose one of the following options:")
+                        
+                        with gr.Tabs():
+                            with gr.TabItem("📤 Upload File"):
+                                video_input = gr.Video(label="Upload Video File")
+                            
+                            with gr.TabItem("📝 File Path"):
+                                video_path_input = gr.Textbox(
+                                    label="Video File Path",
+                                    placeholder="/gpfs/milgram/project/scherzer/yl2428/VideoLLaMA3/Y00078.1_trimmed_13-22.mp4",
+                                    info="Enter the full path to your video file. Files outside allowed directories will be copied automatically."
+                                )
+                                
+                                # File path validation indicator
+                                path_status = gr.HTML(
+                                    value="<p style='color: #666;'>Enter a file path above to validate</p>",
+                                    label="Path Status"
+                                )
                         
                         with gr.Accordion("⚙️ Processing Settings", open=True):
                             confidence_slider = gr.Slider(
@@ -1361,7 +1474,15 @@ def create_interface():
                     # Video 1 column
                     with gr.Column():
                         gr.Markdown("#### 📹 Video 1")
-                        video1_input = gr.Video(label="Upload First Video")
+                        
+                        with gr.Tabs():
+                            with gr.TabItem("📤 Upload"):
+                                video1_input = gr.Video(label="Upload First Video")
+                            with gr.TabItem("📝 Path"):
+                                video1_path_input = gr.Textbox(
+                                    label="Video 1 File Path",
+                                    placeholder="/path/to/video1.mp4"
+                                )
                         
                         with gr.Accordion("Video 1 Settings", open=False):
                             video1_confidence = gr.Slider(
@@ -1378,7 +1499,15 @@ def create_interface():
                     # Video 2 column
                     with gr.Column():
                         gr.Markdown("#### 📹 Video 2")
-                        video2_input = gr.Video(label="Upload Second Video")
+                        
+                        with gr.Tabs():
+                            with gr.TabItem("📤 Upload"):
+                                video2_input = gr.Video(label="Upload Second Video")
+                            with gr.TabItem("📝 Path"):
+                                video2_path_input = gr.Textbox(
+                                    label="Video 2 File Path",
+                                    placeholder="/path/to/video2.mp4"
+                                )
                         
                         with gr.Accordion("Video 2 Settings", open=False):
                             video2_confidence = gr.Slider(
@@ -1430,10 +1559,28 @@ def create_interface():
                 
                 with gr.Row():
                     with gr.Column(scale=2):
-                        # Standard Gradio video player
+                        # Video input options
+                        gr.Markdown("### 📁 Load Video for Annotation")
+                        
+                        with gr.Tabs():
+                            with gr.TabItem("📤 Upload File"):
+                                annotation_video_upload = gr.Video(
+                                    label="Upload Video File",
+                                    interactive=True
+                                )
+                            
+                            with gr.TabItem("📝 File Path"):
+                                annotation_video_path = gr.Textbox(
+                                    label="Video File Path",
+                                    placeholder="/path/to/your/video.mp4",
+                                    info="Enter the full path to your video file"
+                                )
+                        
+                        # Display loaded video
                         annotation_video = gr.Video(
-                            label="Video to Annotate - Note the time shown in player (e.g., 0:13)",
-                            interactive=False
+                            label="Loaded Video - Note the time shown in player (e.g., 0:13)",
+                            interactive=False,
+                            visible=False
                         )
                         
                         # Button to launch advanced annotator
@@ -1790,10 +1937,73 @@ def create_interface():
                 - Multiple assessments recommended for consistency
                 """)
         
+        # Helper functions for UI
+        def validate_file_path(path_text):
+            """Validate file path and return status HTML"""
+            if not path_text or not path_text.strip():
+                return "<p style='color: #666;'>Enter a file path above to validate</p>"
+            
+            path_text = path_text.strip()
+            
+            if not os.path.exists(path_text):
+                return f"<p style='color: #dc3545;'>❌ File not found: {path_text}</p>"
+            
+            if not app.validate_video_file(path_text):
+                return f"<p style='color: #dc3545;'>❌ Invalid video file: {path_text}</p>"
+            
+            # Check if file needs to be copied for Gradio access
+            current_dir = os.getcwd()
+            temp_dir = tempfile.gettempdir()
+            abs_path = os.path.abspath(path_text)
+            
+            needs_copy = not (abs_path.startswith(current_dir) or 
+                             abs_path.startswith(temp_dir) or
+                             abs_path.startswith(app.temp_dir))
+            
+            # Get file info
+            try:
+                file_size = os.path.getsize(path_text) / (1024 * 1024)  # MB
+                cap = cv2.VideoCapture(path_text)
+                fps = cap.get(cv2.CAP_PROP_FPS)
+                frame_count = cap.get(cv2.CAP_PROP_FRAME_COUNT)
+                duration = frame_count / fps if fps > 0 else 0
+                width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+                height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+                cap.release()
+                
+                copy_info = ""
+                if needs_copy:
+                    copy_info = f"""
+                    <li style='color: #17a2b8;'>📋 Note: File will be copied to temp directory for processing</li>
+                    """
+                
+                return f"""
+                <div style='color: #28a745; font-family: Inter, sans-serif;'>
+                    <p><strong>✅ Valid video file</strong></p>
+                    <ul style='margin: 0.5rem 0; padding-left: 1.5rem;'>
+                        <li>Size: {file_size:.1f} MB</li>
+                        <li>Duration: {duration:.1f} seconds</li>
+                        <li>Resolution: {width}x{height}</li>
+                        <li>FPS: {fps:.1f}</li>
+                        {copy_info}
+                    </ul>
+                </div>
+                """
+            except Exception as e:
+                return f"<p style='color: #ffc107;'>⚠️ Valid path but couldn't read video info: {str(e)}</p>"
+        
         # Event handlers
+        
+        # File path validation
+        video_path_input.change(
+            fn=validate_file_path,
+            inputs=[video_path_input],
+            outputs=[path_status]
+        )
+        
         process_btn.click(
             fn=app.process_video,
-            inputs=[video_input, confidence_slider, face_checkbox, contrast_checkbox],
+            inputs=[video_input, video_path_input, confidence_slider, face_checkbox, contrast_checkbox],
             outputs=[output_video, csv_output, tracking_summary]
         ).then(
             fn=lambda x: gr.update(visible=True, value=x),
@@ -1808,9 +2018,9 @@ def create_interface():
         )
         
         # Comparative analysis event handlers
-        def process_video1_wrapper(video, conf, face, contrast):
+        def process_video1_wrapper(video_file, video_path, conf, face, contrast):
             output_video, csv, summary = app.process_for_comparison(
-                video, 'video1', conf, face, contrast
+                video_file, video_path, 'video1', conf, face, contrast
             )
             return (
                 output_video,
@@ -1819,9 +2029,9 @@ def create_interface():
                 True if csv else False  # Update processed state
             )
         
-        def process_video2_wrapper(video, conf, face, contrast):
+        def process_video2_wrapper(video_file, video_path, conf, face, contrast):
             output_video, csv, summary = app.process_for_comparison(
-                video, 'video2', conf, face, contrast
+                video_file, video_path, 'video2', conf, face, contrast
             )
             return (
                 output_video,
@@ -1840,7 +2050,7 @@ def create_interface():
         # Process video 1
         process_video1_btn.click(
             fn=process_video1_wrapper,
-            inputs=[video1_input, video1_confidence, video1_face, video1_contrast],
+            inputs=[video1_input, video1_path_input, video1_confidence, video1_face, video1_contrast],
             outputs=[video1_output, video1_output, video1_summary, video1_processed]
         ).then(
             fn=update_compare_button,
@@ -1851,7 +2061,7 @@ def create_interface():
         # Process video 2
         process_video2_btn.click(
             fn=process_video2_wrapper,
-            inputs=[video2_input, video2_confidence, video2_face, video2_contrast],
+            inputs=[video2_input, video2_path_input, video2_confidence, video2_face, video2_contrast],
             outputs=[video2_output, video2_output, video2_summary, video2_processed]
         ).then(
             fn=update_compare_button,
@@ -1873,16 +2083,29 @@ def create_interface():
         )
         
         # Annotation event handlers
-        def load_video_for_annotation(video_file):
+        def load_video_for_annotation(video_file, video_path_text):
             """Load video and initialize annotation manager"""
-            if video_file is None:
-                return None, None, "<p>Please upload a video first</p>", None
+            try:
+                # Resolve video path from either upload or text input
+                video_path = app.resolve_video_path(video_file, video_path_text)
+                
+                if video_path is None:
+                    return None, None, "<p>Please upload a video file or provide a valid video path.</p>", None
+                
+                # Validate the video file
+                if not app.validate_video_file(video_path):
+                    return None, None, f"<p>Invalid or unsupported video file: {video_path}</p>", None
+                
+            except FileNotFoundError as e:
+                return None, None, f"<p style='color: red;'>{str(e)}</p>", None
+            except Exception as e:
+                return None, None, f"<p style='color: red;'>Error accessing video file: {str(e)}</p>", None
             
-            app.current_video_path = video_file
-            app.annotation_manager = VideoAnnotationManager(video_file)
+            app.current_video_path = video_path
+            app.annotation_manager = VideoAnnotationManager(video_path)
             
             # Get video duration
-            cap = cv2.VideoCapture(video_file)
+            cap = cv2.VideoCapture(video_path)
             fps = cap.get(cv2.CAP_PROP_FPS)
             frame_count = cap.get(cv2.CAP_PROP_FRAME_COUNT)
             duration = frame_count / fps if fps > 0 else 0
@@ -1892,7 +2115,7 @@ def create_interface():
             app.annotation_manager.metadata['total_duration'] = duration
             
             return (
-                video_file,  # Return the video path for Gradio's video component
+                video_path,  # Return the video path for Gradio's video component
                 create_timeline_plot(app.annotation_manager),
                 f"<p>Video loaded. Duration: {duration:.1f} seconds. Ready for annotation.</p>",
                 update_segments_table(app.annotation_manager)
@@ -2217,10 +2440,37 @@ def create_interface():
             except Exception as e:
                 return f"<p style='color: red;'>Error in analysis: {str(e)}</p>"
         
+        # Helper function to load video and show it
+        def load_and_show_annotation_video(video_file, video_path_text):
+            """Load video for annotation and update display"""
+            result = load_video_for_annotation(video_file, video_path_text)
+            video_path, timeline, stats, segments = result
+            
+            if video_path:
+                return (
+                    gr.update(value=video_path, visible=True),  # Show loaded video
+                    timeline,
+                    stats,
+                    segments
+                )
+            else:
+                return (
+                    gr.update(visible=False),  # Hide video display
+                    timeline,
+                    stats,
+                    segments
+                )
+        
         # Wire up annotation event handlers
-        video_input.change(
-            fn=load_video_for_annotation,
-            inputs=[video_input],
+        annotation_video_upload.change(
+            fn=load_and_show_annotation_video,
+            inputs=[annotation_video_upload, annotation_video_path],
+            outputs=[annotation_video, timeline_plot, annotation_stats, segments_table]
+        )
+        
+        annotation_video_path.change(
+            fn=load_and_show_annotation_video,
+            inputs=[annotation_video_upload, annotation_video_path],
             outputs=[annotation_video, timeline_plot, annotation_stats, segments_table]
         )
         
@@ -2300,10 +2550,29 @@ if __name__ == "__main__":
         print("Please specify a different port using: GRADIO_SERVER_PORT=<port> python gradio_app.py")
     else:
         print(f"Launching on port {port}...")
+        
+        # Define common paths that users might need access to
+        allowed_paths = [
+            "/gpfs",  # Common HPC filesystem
+            "/data",  # Common data directory
+            "/home",  # User home directories
+            "/mnt",   # Mount points
+            "/opt",   # Optional software
+            "/scratch", # Scratch directories
+            "/tmp",   # Temp directory (already allowed by default)
+            os.getcwd(),  # Current working directory (already allowed by default)
+        ]
+        
+        # Filter to only include paths that actually exist
+        existing_allowed_paths = [path for path in allowed_paths if os.path.exists(path)]
+        
+        print(f"Allowed file paths: {existing_allowed_paths}")
+        
         interface.launch(
             server_name="0.0.0.0",
             server_port=port,
             share=False,
             show_error=True,
-            inbrowser=False
+            inbrowser=False,
+            allowed_paths=existing_allowed_paths
         )
