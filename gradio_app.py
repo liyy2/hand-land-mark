@@ -99,7 +99,7 @@ class PDAnalysisApp:
                     '-ss', str(start_time),      # Start time
                     '-t', str(duration),         # Duration
                     '-map', '0:v:0',             # Map only first video stream
-                    '-map', '0:a?',              # Map all audio streams if exist
+                    '-map', '0:a:0?',            # Map only first audio stream if exists
                     '-c', 'copy',                # Copy streams without re-encoding
                     '-map_metadata', '0',        # Copy all metadata from input
                     '-avoid_negative_ts', 'make_zero',
@@ -134,7 +134,7 @@ class PDAnalysisApp:
                         '-ss', str(start_time),
                         '-t', str(duration),
                         '-map', '0:v:0',             # Map only first video stream
-                        '-map', '0:a?',              # Map all audio streams if exist
+                        '-map', '0:a:0?',            # Map only first audio stream if exists
                         '-c', 'copy',
                         '-map_metadata', '0',        # Copy all metadata from input
                         '-avoid_negative_ts', 'make_zero',
