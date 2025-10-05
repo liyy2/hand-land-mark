@@ -13,14 +13,497 @@ import numpy as np
 import pandas as pd
 from datetime import datetime
 import tempfile
+import argparse
+from tqdm import tqdm
+import sys
 
 app = Flask(__name__)
 CORS(app)
 
+# Flask configuration for file uploads
+app.config['MAX_CONTENT_LENGTH'] = 2 * 1024 * 1024 * 1024  # 2GB max file size
+app.config['UPLOAD_FOLDER'] = tempfile.mkdtemp(prefix="video_uploads_")
+
 # Store annotations and video info
 annotations = []
 current_video_path = None
+original_video_path = None  # Store the original video path
+original_video_name = None  # Store the original video name
 video_info = {}
+video_ready = False  # Track if video is processed and ready
+upload_folder = tempfile.mkdtemp(prefix="video_uploads_")
+processing_status = {"status": "idle", "progress": 0, "message": ""}
+
+UPLOAD_TEMPLATE = """
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Video Annotation Editor - Upload</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #1e1e2e 0%, #151521 100%);
+            color: #e0e0e0;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        
+        .upload-container {
+            max-width: 600px;
+            width: 100%;
+            background: #2a2a3e;
+            padding: 40px;
+            border-radius: 16px;
+            box-shadow: 0 16px 48px rgba(0,0,0,0.4);
+        }
+        
+        h1 {
+            color: #ffffff;
+            margin-bottom: 10px;
+            font-size: 32px;
+            text-align: center;
+        }
+        
+        .subtitle {
+            text-align: center;
+            color: #a0a0a0;
+            margin-bottom: 40px;
+            font-size: 14px;
+        }
+        
+        .upload-area {
+            border: 3px dashed #007acc;
+            border-radius: 12px;
+            padding: 40px 20px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            background: #1a1a2e;
+            margin-bottom: 30px;
+        }
+        
+        .upload-area:hover {
+            border-color: #1a86d3;
+            background: #222238;
+        }
+        
+        .upload-area.dragover {
+            border-color: #10b981;
+            background: #1a2e23;
+        }
+        
+        .upload-icon {
+            font-size: 64px;
+            margin-bottom: 15px;
+        }
+        
+        .upload-text {
+            font-size: 18px;
+            color: #e0e0e0;
+            margin-bottom: 10px;
+        }
+        
+        .upload-hint {
+            font-size: 13px;
+            color: #a0a0a0;
+        }
+        
+        input[type="file"] {
+            display: none;
+        }
+        
+        .divider {
+            text-align: center;
+            margin: 30px 0;
+            position: relative;
+        }
+        
+        .divider::before {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 0;
+            right: 0;
+            height: 1px;
+            background: #3a3a4e;
+        }
+        
+        .divider span {
+            background: #2a2a3e;
+            padding: 0 15px;
+            position: relative;
+            color: #a0a0a0;
+            font-size: 13px;
+        }
+        
+        .path-input-group {
+            margin-bottom: 20px;
+        }
+        
+        label {
+            display: block;
+            margin-bottom: 8px;
+            color: #a0a0a0;
+            font-size: 13px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        
+        input[type="text"] {
+            width: 100%;
+            padding: 12px 16px;
+            background: #1a1a2e;
+            border: 2px solid #3a3a4e;
+            color: #e0e0e0;
+            border-radius: 8px;
+            font-size: 14px;
+            transition: border-color 0.3s ease;
+        }
+        
+        input[type="text"]:focus {
+            outline: none;
+            border-color: #007acc;
+            box-shadow: 0 0 0 3px rgba(0, 122, 204, 0.1);
+        }
+        
+        button {
+            width: 100%;
+            padding: 14px 20px;
+            font-size: 15px;
+            font-weight: 600;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            background: linear-gradient(135deg, #007acc 0%, #0056a3 100%);
+            color: white;
+        }
+        
+        button:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(0, 122, 204, 0.4);
+        }
+        
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        
+        .progress-container {
+            display: none;
+            margin-top: 30px;
+            padding: 20px;
+            background: #1a1a2e;
+            border-radius: 8px;
+        }
+        
+        .progress-container.active {
+            display: block;
+        }
+        
+        .progress-bar-container {
+            width: 100%;
+            height: 8px;
+            background: #3a3a4e;
+            border-radius: 4px;
+            overflow: hidden;
+            margin: 15px 0;
+        }
+        
+        .progress-bar {
+            height: 100%;
+            background: linear-gradient(90deg, #007acc 0%, #10b981 100%);
+            width: 0%;
+            transition: width 0.3s ease;
+            border-radius: 4px;
+        }
+        
+        .progress-text {
+            text-align: center;
+            color: #a0a0a0;
+            font-size: 13px;
+            margin-bottom: 10px;
+        }
+        
+        .progress-percentage {
+            text-align: center;
+            color: #007acc;
+            font-size: 24px;
+            font-weight: bold;
+            margin-top: 10px;
+        }
+        
+        .status-message {
+            text-align: center;
+            padding: 12px;
+            border-radius: 8px;
+            margin-top: 15px;
+            font-size: 14px;
+        }
+        
+        .status-success {
+            background: rgba(16, 185, 129, 0.2);
+            color: #10b981;
+            border: 1px solid #10b981;
+        }
+        
+        .status-error {
+            background: rgba(239, 68, 68, 0.2);
+            color: #ef4444;
+            border: 1px solid #ef4444;
+        }
+        
+        .file-info {
+            display: none;
+            background: #1a1a2e;
+            padding: 15px;
+            border-radius: 8px;
+            margin-top: 15px;
+        }
+        
+        .file-info.active {
+            display: block;
+        }
+        
+        .file-name {
+            color: #007acc;
+            font-weight: 600;
+            margin-bottom: 5px;
+        }
+        
+        .file-size {
+            color: #a0a0a0;
+            font-size: 13px;
+        }
+    </style>
+</head>
+<body>
+    <div class="upload-container">
+        <h1>📹 Video Annotation Editor</h1>
+        <p class="subtitle">Upload a video or provide a path to begin timeline annotation</p>
+        
+        <div class="upload-area" id="uploadArea" onclick="document.getElementById('fileInput').click()">
+            <div class="upload-icon">🎬</div>
+            <div class="upload-text">Click to upload or drag & drop</div>
+            <div class="upload-hint">Supports MP4, AVI, MOV (max 2GB)</div>
+        </div>
+        
+        <input type="file" id="fileInput" accept="video/*">
+        
+        <div class="file-info" id="fileInfo">
+            <div class="file-name" id="fileName"></div>
+            <div class="file-size" id="fileSize"></div>
+        </div>
+        
+        <div class="divider"><span>OR</span></div>
+        
+        <div class="path-input-group">
+            <label>Video File Path</label>
+            <input type="text" id="videoPath" placeholder="/path/to/video.mp4">
+        </div>
+        
+        <button id="processBtn" onclick="processVideo()">Start Annotation</button>
+        
+        <div class="progress-container" id="progressContainer">
+            <div class="progress-text" id="progressText">Processing video...</div>
+            <div class="progress-bar-container">
+                <div class="progress-bar" id="progressBar"></div>
+            </div>
+            <div class="progress-percentage" id="progressPercentage">0%</div>
+        </div>
+        
+        <div id="statusMessage"></div>
+    </div>
+    
+    <script>
+        let selectedFile = null;
+        const uploadArea = document.getElementById('uploadArea');
+        const fileInput = document.getElementById('fileInput');
+        const fileInfo = document.getElementById('fileInfo');
+        const videoPath = document.getElementById('videoPath');
+        const processBtn = document.getElementById('processBtn');
+        
+        fileInput.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (file) {
+                handleFileSelect(file);
+            }
+        });
+        
+        uploadArea.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            uploadArea.classList.add('dragover');
+        });
+        
+        uploadArea.addEventListener('dragleave', () => {
+            uploadArea.classList.remove('dragover');
+        });
+        
+        uploadArea.addEventListener('drop', (e) => {
+            e.preventDefault();
+            uploadArea.classList.remove('dragover');
+            
+            const file = e.dataTransfer.files[0];
+            if (file && file.type.startsWith('video/')) {
+                fileInput.files = e.dataTransfer.files;
+                handleFileSelect(file);
+            } else {
+                showStatus('Please drop a video file', 'error');
+            }
+        });
+        
+        function handleFileSelect(file) {
+            selectedFile = file;
+            document.getElementById('fileName').textContent = file.name;
+            document.getElementById('fileSize').textContent = formatFileSize(file.size);
+            fileInfo.classList.add('active');
+            videoPath.value = '';
+        }
+        
+        function formatFileSize(bytes) {
+            if (bytes < 1024) return bytes + ' B';
+            else if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB';
+            else if (bytes < 1073741824) return (bytes / 1048576).toFixed(1) + ' MB';
+            else return (bytes / 1073741824).toFixed(1) + ' GB';
+        }
+        
+        async function processVideo() {
+            const path = videoPath.value.trim();
+            
+            if (!selectedFile && !path) {
+                showStatus('Please upload a video file or provide a path', 'error');
+                return;
+            }
+            
+            processBtn.disabled = true;
+            document.getElementById('progressContainer').classList.add('active');
+            
+            try {
+                if (selectedFile) {
+                    await uploadFile(selectedFile);
+                } else {
+                    await processPath(path);
+                }
+            } catch (error) {
+                showStatus('Error: ' + error.message, 'error');
+                processBtn.disabled = false;
+            }
+        }
+        
+        async function uploadFile(file) {
+            const formData = new FormData();
+            formData.append('video', file);
+            
+            const xhr = new XMLHttpRequest();
+            
+            xhr.upload.addEventListener('progress', (e) => {
+                if (e.lengthComputable) {
+                    const percentComplete = (e.loaded / e.total) * 50;
+                    updateProgress(percentComplete, 'Uploading video...');
+                }
+            });
+            
+            xhr.addEventListener('load', () => {
+                if (xhr.status === 200) {
+                    const response = JSON.parse(xhr.responseText);
+                    if (response.success) {
+                        pollProgress();
+                    } else {
+                        showStatus('Error: ' + response.error, 'error');
+                        processBtn.disabled = false;
+                    }
+                } else {
+                    showStatus('Upload failed', 'error');
+                    processBtn.disabled = false;
+                }
+            });
+            
+            xhr.addEventListener('error', () => {
+                showStatus('Upload failed', 'error');
+                processBtn.disabled = false;
+            });
+            
+            xhr.open('POST', '/upload_video');
+            xhr.send(formData);
+        }
+        
+        async function processPath(path) {
+            updateProgress(10, 'Processing video path...');
+            
+            const response = await fetch('/process_path', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({path: path})
+            });
+            
+            const data = await response.json();
+            
+            if (data.success) {
+                pollProgress();
+            } else {
+                showStatus('Error: ' + data.error, 'error');
+                processBtn.disabled = false;
+            }
+        }
+        
+        async function pollProgress() {
+            const interval = setInterval(async () => {
+                try {
+                    const response = await fetch('/processing_status');
+                    const data = await response.json();
+                    
+                    if (data.status === 'processing') {
+                        updateProgress(50 + data.progress * 0.5, data.message);
+                    } else if (data.status === 'complete') {
+                        clearInterval(interval);
+                        updateProgress(100, 'Complete! Redirecting...');
+                        showStatus('Video ready! Redirecting to editor...', 'success');
+                        setTimeout(() => {
+                            window.location.href = '/editor';
+                        }, 1500);
+                    } else if (data.status === 'error') {
+                        clearInterval(interval);
+                        showStatus('Error: ' + data.message, 'error');
+                        processBtn.disabled = false;
+                    }
+                } catch (error) {
+                    clearInterval(interval);
+                    showStatus('Error checking status', 'error');
+                    processBtn.disabled = false;
+                }
+            }, 500);
+        }
+        
+        function updateProgress(percent, text) {
+            document.getElementById('progressBar').style.width = percent + '%';
+            document.getElementById('progressPercentage').textContent = Math.round(percent) + '%';
+            document.getElementById('progressText').textContent = text;
+        }
+        
+        function showStatus(message, type) {
+            const statusDiv = document.getElementById('statusMessage');
+            statusDiv.textContent = message;
+            statusDiv.className = 'status-message status-' + type;
+            setTimeout(() => {
+                statusDiv.textContent = '';
+                statusDiv.className = 'status-message';
+            }, 5000);
+        }
+    </script>
+</body>
+</html>
+"""
 
 HTML_TEMPLATE = """
 <!DOCTYPE html>
@@ -591,14 +1074,14 @@ HTML_TEMPLATE = """
     <!-- Top Toolbar -->
     <div class="toolbar">
         <div class="toolbar-title">📹 Clinical Video Annotation Tool</div>
+        <button class="toolbar-btn" onclick="loadNewVideo()" title="Load a different video">🔄 New Video</button>
+        <div style="width: 1px; height: 20px; background: #464647;"></div>
         <button class="toolbar-btn" onclick="showNewAnnotationDialog()" style="background: #007acc; color: white;">➕ Add Annotation</button>
         <button class="toolbar-btn" onclick="duplicateSelected()">📋 Duplicate</button>
         <button class="toolbar-btn" onclick="deleteSelected()">🗑️ Delete</button>
-        <div style="width: 1px; height: 20px; background: #464647;"></div>
+        <div style="width: 1px; height: 20px; background: #464647; margin-left: auto;"></div>
         <button class="toolbar-btn" onclick="saveProject()">💾 Save</button>
         <button class="toolbar-btn" onclick="loadProject()">📁 Open</button>
-        <button class="toolbar-btn" onclick="exportAnnotations()">📤 Export</button>
-        <div style="width: 1px; height: 20px; background: #464647;"></div>
         <button class="toolbar-btn" onclick="showShortcuts()">⌨️ Shortcuts</button>
     </div>
     
@@ -713,6 +1196,28 @@ HTML_TEMPLATE = """
             <span class="shortcut-key">Cmd/Ctrl + S</span>
         </div>
         <button class="toolbar-btn" onclick="hideShortcuts()" style="margin-top: 15px; width: 100%;">Close</button>
+    </div>
+    
+    <!-- Save Dialog -->
+    <div class="shortcuts-modal" id="saveDialog" style="display: none; max-width: 500px;">
+        <h3>💾 Save Annotations</h3>
+        <div style="margin: 20px 0;">
+            <label style="display: block; color: #969696; margin-bottom: 8px; font-size: 12px;">Project Name</label>
+            <input type="text" id="projectName" class="property-input" placeholder="Enter project name (optional)" 
+                   style="width: 100%; background: #3c3c3c; border: 1px solid #464647; color: #cccccc; padding: 10px; font-size: 14px;">
+            <div style="margin-top: 10px; font-size: 11px; color: #969696;">
+                Leave empty for auto-generated name with timestamp
+            </div>
+            <div style="margin-top: 15px; padding: 10px; background: rgba(0, 122, 204, 0.1); border-left: 3px solid #007acc; border-radius: 4px;">
+                <div style="font-size: 11px; color: #cccccc;">
+                    📁 <strong>Your browser will prompt you to choose where to save the file</strong>
+                </div>
+            </div>
+        </div>
+        <div style="display: flex; gap: 10px;">
+            <button class="toolbar-btn" onclick="confirmSave()" style="flex: 1; background: #007acc; color: white;">Save</button>
+            <button class="toolbar-btn" onclick="hideSaveDialog()" style="flex: 1;">Cancel</button>
+        </div>
     </div>
     
     <!-- New Annotation Dialog -->
@@ -1509,27 +2014,81 @@ HTML_TEMPLATE = """
         
         // Save/Load
         function saveProject() {
+            // Show save dialog
+            document.getElementById('saveDialog').style.display = 'block';
+            // Pre-fill with video name if available
+            const videoName = '{{ original_video_name }}' || 'project';
+            const baseName = videoName.replace(/\.[^/.]+$/, ''); // Remove extension
+            document.getElementById('projectName').value = baseName;
+            document.getElementById('projectName').select(); // Select text for easy editing
+        }
+        
+        function hideSaveDialog() {
+            document.getElementById('saveDialog').style.display = 'none';
+        }
+        
+        function confirmSave() {
+            const customName = document.getElementById('projectName').value.trim();
+            
+            // Generate filename
+            let filename;
+            if (customName) {
+                filename = `${customName}_${new Date().toISOString().replace(/[:.]/g, '-').substring(0, 19)}.json`;
+            } else {
+                const videoName = '{{ original_video_name }}' || 'project';
+                const baseName = videoName.replace(/\.[^/.]+$/, '');
+                filename = `${baseName}_annotations_${new Date().toISOString().replace(/[:.]/g, '-').substring(0, 19)}.json`;
+            }
+            
+            // Prepare data
             const data = {
                 annotations: annotations,
                 videoDuration: videoDuration,
-                timestamp: new Date().toISOString()
+                timestamp: new Date().toISOString(),
+                video: '{{ original_video_path }}'
             };
             
-            fetch('/save_project', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify(data)
-            })
-            .then(response => response.json())
-            .then(result => {
-                if (result.success) {
-                    showNotification('Project saved successfully');
-                }
-            });
+            // Create blob and download
+            const jsonStr = JSON.stringify(data, null, 2);
+            const blob = new Blob([jsonStr], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            
+            // Create temporary download link
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            
+            // Cleanup
+            setTimeout(() => {
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+            }, 100);
+            
+            showNotification(`Downloading: ${filename}`);
+            hideSaveDialog();
         }
         
-        function exportAnnotations() {
-            window.location.href = '/export_annotations';
+        function loadNewVideo() {
+            // Check if there are unsaved annotations
+            if (annotations.length > 0) {
+                const confirmMsg = `You have ${annotations.length} annotation(s). Do you want to save before loading a new video?`;
+                if (confirm(confirmMsg)) {
+                    // Show save dialog, then redirect after saving
+                    saveProject();
+                    // Note: User needs to complete save dialog before redirect
+                    showNotification('Please complete save dialog, then click "New Video" again to load new video');
+                } else {
+                    // Just redirect without saving
+                    if (confirm('Are you sure you want to discard current annotations?')) {
+                        window.location.href = '/';
+                    }
+                }
+            } else {
+                // No annotations, just redirect
+                window.location.href = '/';
+            }
         }
         
         function showNotification(message) {
@@ -1609,8 +2168,16 @@ HTML_TEMPLATE = """
 
 @app.route('/')
 def index():
-    video_url = url_for('serve_video') if current_video_path else ''
-    return render_template_string(HTML_TEMPLATE, video_url=video_url)
+    """Landing page with upload interface"""
+    return render_template_string(UPLOAD_TEMPLATE)
+
+@app.route('/editor')
+def editor():
+    """Editor interface (only accessible after video is processed)"""
+    if not video_ready or not current_video_path:
+        return "No video loaded. Please upload a video first.", 400
+    video_url = url_for('serve_video')
+    return render_template_string(HTML_TEMPLATE, video_url=video_url, original_video_name=original_video_name or '')
 
 @app.route('/serve_video')
 def serve_video():
@@ -1618,60 +2185,366 @@ def serve_video():
         return send_file(current_video_path, mimetype='video/mp4')
     return '', 404
 
+@app.route('/upload_video', methods=['POST'])
+def upload_video():
+    """Handle video file upload"""
+    global processing_status
+    
+    try:
+        if 'video' not in request.files:
+            return jsonify({'success': False, 'error': 'No video file provided'}), 400
+        
+        file = request.files['video']
+        if file.filename == '':
+            return jsonify({'success': False, 'error': 'No file selected'}), 400
+        
+        # Save uploaded file
+        filename = file.filename
+        upload_path = os.path.join(upload_folder, filename)
+        file.save(upload_path)
+        
+        # Start processing in background thread
+        import threading
+        processing_status = {"status": "processing", "progress": 0, "message": "Starting conversion..."}
+        thread = threading.Thread(target=process_video_file, args=(upload_path,))
+        thread.daemon = True
+        thread.start()
+        
+        return jsonify({'success': True})
+        
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/process_path', methods=['POST'])
+def process_path():
+    """Handle video path input"""
+    global processing_status
+    
+    try:
+        data = request.json
+        video_path = data.get('path', '').strip()
+        
+        if not video_path:
+            return jsonify({'success': False, 'error': 'No path provided'}), 400
+        
+        if not os.path.exists(video_path):
+            return jsonify({'success': False, 'error': f'File not found: {video_path}'}), 404
+        
+        # Start processing in background thread
+        import threading
+        processing_status = {"status": "processing", "progress": 0, "message": "Starting conversion..."}
+        thread = threading.Thread(target=process_video_file, args=(video_path,))
+        thread.daemon = True
+        thread.start()
+        
+        return jsonify({'success': True})
+        
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/processing_status')
+def get_processing_status():
+    """Get current processing status"""
+    return jsonify(processing_status)
+
 @app.route('/get_annotations')
 def get_annotations():
     return jsonify({'annotations': annotations})
 
-@app.route('/save_project', methods=['POST'])
-def save_project():
-    global annotations
-    data = request.json
-    annotations = data.get('annotations', [])
-    
-    # Save to file
-    filename = f"project_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
-    with open(filename, 'w') as f:
-        json.dump(data, f, indent=2)
-    
-    return jsonify({'success': True, 'filename': filename})
 
-@app.route('/export_annotations')
-def export_annotations():
-    data = {
-        'video': current_video_path,
-        'annotations': annotations,
-        'created': datetime.now().isoformat()
-    }
+def convert_to_720p(input_path, output_dir=None, progress_callback=None):
+    """
+    Convert video to 720p resolution for better performance
     
-    temp_file = tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False)
-    json.dump(data, temp_file, indent=2)
-    temp_file.close()
+    Args:
+        input_path: Path to input video
+        output_dir: Directory for output video (None = create temp dir)
+        progress_callback: Optional callback function(progress_percent, message)
     
-    return send_file(temp_file.name, as_attachment=True, download_name='annotations.json')
-
-def start_server(video_path):
-    global current_video_path, video_info
-    current_video_path = video_path
+    Returns:
+        Path to converted video (or original if no conversion needed)
+    """
+    # Open video
+    cap = cv2.VideoCapture(input_path)
+    if not cap.isOpened():
+        raise ValueError(f"Cannot open video file: {input_path}")
     
-    # Get video info
-    cap = cv2.VideoCapture(video_path)
-    video_info = {
-        'duration': cap.get(cv2.CAP_PROP_FRAME_COUNT) / cap.get(cv2.CAP_PROP_FPS),
-        'fps': cap.get(cv2.CAP_PROP_FPS),
-        'width': int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)),
-        'height': int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-    }
+    # Get video properties
+    fps = int(cap.get(cv2.CAP_PROP_FPS))
+    width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+    height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+    
+    print(f"Original video resolution: {width}x{height}")
+    
+    # Check if conversion is needed
+    if height <= 720:
+        print(f"Video is already {height}p, no conversion needed")
+        cap.release()
+        if progress_callback:
+            progress_callback(100, "Video ready (no conversion needed)")
+        return input_path
+    
+    # Calculate new dimensions maintaining aspect ratio
+    aspect_ratio = width / height
+    if aspect_ratio > 16/9:  # Wider than 16:9
+        new_width = 1280
+        new_height = int(1280 / aspect_ratio)
+    else:  # Taller than or equal to 16:9
+        new_height = 720
+        new_width = int(720 * aspect_ratio)
+    
+    # Ensure dimensions are even (required for some codecs)
+    new_width = new_width if new_width % 2 == 0 else new_width - 1
+    new_height = new_height if new_height % 2 == 0 else new_height - 1
+    
+    print(f"Converting to: {new_width}x{new_height}")
+    
+    # Create output path
+    if output_dir is None:
+        output_dir = tempfile.mkdtemp(prefix="video_720p_")
+    
+    base_name = os.path.basename(input_path)
+    name, ext = os.path.splitext(base_name)
+    output_path = os.path.join(output_dir, f"{name}_720p{ext}")
+    
+    # Setup video writer with H264 codec for better compatibility
+    fourcc = cv2.VideoWriter_fourcc(*'H264')
+    out = cv2.VideoWriter(output_path, fourcc, fps, (new_width, new_height))
+    
+    # If H264 fails, try mp4v
+    if not out.isOpened():
+        fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+        out = cv2.VideoWriter(output_path, fourcc, fps, (new_width, new_height))
+    
+    # Process frames with progress tracking
+    print(f"Converting video to 720p: {new_width}x{new_height}")
+    
+    frame_count = 0
+    last_progress = 0
+    
+    # Use tqdm for console, callback for web
+    if progress_callback:
+        # Web mode - use callback
+        while True:
+            ret, frame = cap.read()
+            if not ret:
+                break
+            
+            # Resize frame
+            resized_frame = cv2.resize(frame, (new_width, new_height), interpolation=cv2.INTER_AREA)
+            out.write(resized_frame)
+            
+            frame_count += 1
+            progress = int((frame_count / total_frames) * 100)
+            
+            # Update every 5% or on last frame
+            if progress >= last_progress + 5 or frame_count == total_frames:
+                progress_callback(progress, f"Converting: {frame_count}/{total_frames} frames")
+                last_progress = progress
+    else:
+        # Console mode - use tqdm
+        with tqdm(total=total_frames, desc="Converting", unit="frames", 
+                  bar_format='{l_bar}{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}]') as pbar:
+            while True:
+                ret, frame = cap.read()
+                if not ret:
+                    break
+                
+                # Resize frame
+                resized_frame = cv2.resize(frame, (new_width, new_height), interpolation=cv2.INTER_AREA)
+                out.write(resized_frame)
+                
+                pbar.update(1)
+    
+    # Cleanup
     cap.release()
+    out.release()
+    cv2.destroyAllWindows()
     
-    print(f"Starting Video Editor Annotation Server")
-    print(f"Video: {video_path}")
-    print(f"Duration: {video_info['duration']:.1f}s")
-    print("Open http://localhost:5555 in your browser")
-    app.run(host='0.0.0.0', port=5555, debug=False)
+    print(f"✓ Conversion complete! Saved to: {output_path}")
+    return output_path
+
+def process_video_file(video_path):
+    """
+    Process video file in background thread
+    Updates global processing_status
+    """
+    global current_video_path, original_video_path, original_video_name
+    global video_ready, processing_status, video_info
+    
+    try:
+        # Store original video information
+        original_video_path = os.path.abspath(video_path)
+        original_video_name = os.path.basename(video_path)
+        
+        def update_progress(progress, message):
+            """Callback to update processing status"""
+            processing_status["progress"] = progress
+            processing_status["message"] = message
+        
+        # Convert video to 720p
+        converted_path = convert_to_720p(video_path, progress_callback=update_progress)
+        current_video_path = converted_path
+        
+        # Get video info
+        cap = cv2.VideoCapture(current_video_path)
+        video_info = {
+            'duration': cap.get(cv2.CAP_PROP_FRAME_COUNT) / cap.get(cv2.CAP_PROP_FPS),
+            'fps': cap.get(cv2.CAP_PROP_FPS),
+            'width': int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)),
+            'height': int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        }
+        cap.release()
+        
+        # Mark as ready
+        video_ready = True
+        processing_status = {
+            "status": "complete",
+            "progress": 100,
+            "message": "Video processing complete!"
+        }
+        
+        print(f"✓ Video ready for annotation: {original_video_name}")
+        
+    except Exception as e:
+        print(f"✗ Error processing video: {e}")
+        processing_status = {
+            "status": "error",
+            "progress": 0,
+            "message": str(e)
+        }
+        video_ready = False
+
+def start_server(video_path=None, port=5555, skip_conversion=False):
+    """
+    Start the annotation server
+    
+    Args:
+        video_path: Optional path to pre-load a video file (None = use web upload)
+        port: Port number for the server (default: 5555)
+        skip_conversion: Skip 720p conversion if True (only applies if video_path provided)
+    """
+    global current_video_path, original_video_path, original_video_name, video_ready, video_info
+    
+    print("=" * 60)
+    print(f"📹 Professional Video Annotation Editor")
+    print("=" * 60)
+    
+    # If video path provided, pre-process it
+    if video_path:
+        # Validate video path
+        if not os.path.exists(video_path):
+            raise FileNotFoundError(f"Video file not found: {video_path}")
+        
+        # Store original video information
+        original_video_path = os.path.abspath(video_path)
+        original_video_name = os.path.basename(video_path)
+        
+        print(f"Pre-loading video: {original_video_name}")
+        print(f"Full path: {original_video_path}")
+        print()
+        
+        # Convert video to 720p if needed
+        if skip_conversion:
+            print("⚠️  Skipping video conversion (using original)")
+            current_video_path = original_video_path
+        else:
+            print("📹 Checking video resolution...")
+            converted_path = convert_to_720p(video_path)
+            current_video_path = converted_path
+        
+        # Get video info
+        cap = cv2.VideoCapture(current_video_path)
+        video_info = {
+            'duration': cap.get(cv2.CAP_PROP_FRAME_COUNT) / cap.get(cv2.CAP_PROP_FPS),
+            'fps': cap.get(cv2.CAP_PROP_FPS),
+            'width': int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)),
+            'height': int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        }
+        cap.release()
+        
+        video_ready = True
+        print("✓ Video ready for annotation")
+        print(f"Duration: {video_info['duration']:.1f}s")
+    else:
+        print("Mode: Upload via web interface")
+        print("Users can upload videos or provide paths through the web UI")
+    
+    print()
+    print("=" * 60)
+    print("🚀 Starting server...")
+    print(f"📍 URL: http://localhost:{port}")
+    print(f"📍 Or: http://127.0.0.1:{port}")
+    print()
+    if not video_path:
+        print("📤 Visit the URL to upload a video file")
+    print("Press Ctrl+C to stop the server")
+    print("=" * 60)
+    print()
+    
+    try:
+        app.run(host='0.0.0.0', port=port, debug=False, threaded=True)
+    except KeyboardInterrupt:
+        print("\n\n👋 Server stopped by user")
+    except Exception as e:
+        print(f"\n❌ Error starting server: {e}")
+        raise
+
+def main():
+    """Main entry point for standalone usage"""
+    parser = argparse.ArgumentParser(
+        description='Professional Video Annotation Editor - Standalone Edition',
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  # Start server with web upload interface
+  python video_editor_annotation_server.py
+  
+  # Pre-load a video file
+  python video_editor_annotation_server.py video.mp4
+  
+  # Use custom port
+  python video_editor_annotation_server.py --port 8080
+  
+  # Pre-load video and skip 720p conversion
+  python video_editor_annotation_server.py video.mp4 --skip-conversion
+        """
+    )
+    
+    parser.add_argument(
+        'video_path',
+        type=str,
+        nargs='?',  # Make it optional
+        default=None,
+        help='Optional: Path to pre-load a video file (or use web upload)'
+    )
+    
+    parser.add_argument(
+        '--port',
+        type=int,
+        default=5555,
+        help='Port number for the server (default: 5555)'
+    )
+    
+    parser.add_argument(
+        '--skip-conversion',
+        action='store_true',
+        help='Skip 720p conversion and use original video (only if video_path provided)'
+    )
+    
+    args = parser.parse_args()
+    
+    try:
+        start_server(args.video_path, port=args.port, skip_conversion=args.skip_conversion)
+    except FileNotFoundError as e:
+        print(f"\n❌ Error: {e}")
+        sys.exit(1)
+    except Exception as e:
+        print(f"\n❌ Unexpected error: {e}")
+        import traceback
+        traceback.print_exc()
+        sys.exit(1)
 
 if __name__ == '__main__':
-    import sys
-    if len(sys.argv) > 1:
-        start_server(sys.argv[1])
-    else:
-        print("Usage: python video_editor_annotation_server.py <video_path>")
+    main()
