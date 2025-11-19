@@ -24,7 +24,7 @@ app = Flask(__name__)
 CORS(app)
 
 # Flask configuration for file uploads
-app.config['MAX_CONTENT_LENGTH'] = 2 * 1024 * 1024 * 1024  # 2GB max file size
+# app.config['MAX_CONTENT_LENGTH'] = 2 * 1024 * 1024 * 1024  # 2GB max file size (Disabled to allow unlimited uploads)
 app.config['UPLOAD_FOLDER'] = tempfile.mkdtemp(prefix="video_uploads_")
 
 # Store annotations and video info
