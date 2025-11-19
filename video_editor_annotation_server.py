@@ -4,7 +4,7 @@ Professional Video Editor-Style Annotation Server
 Timeline-based interface similar to Final Cut Pro / Premiere Pro
 """
 
-from flask import Flask, render_template_string, request, jsonify, send_file, url_for
+from flask import Flask, render_template_string, request, jsonify, send_file, url_for, make_response
 from flask_cors import CORS
 import os
 import json
@@ -16,6 +16,7 @@ import tempfile
 import argparse
 from tqdm import tqdm
 import sys
+import time
 import subprocess
 
 app = Flask(__name__)
@@ -35,18 +36,20 @@ video_ready = False  # Track if video is processed and ready
 upload_folder = tempfile.mkdtemp(prefix="video_uploads_")
 processing_status = {"status": "idle", "progress": 0, "message": ""}
 REPO_ROOT = os.path.abspath(os.path.dirname(__file__))
+video_version = 0  # Incremented whenever a new video is ready
 
 
 def reset_video_state():
     """Clear server-side state before loading a new video."""
     global annotations, current_video_path, original_video_path, original_video_name
-    global video_info, video_ready
+    global video_info, video_ready, video_version
     annotations = []
     current_video_path = None
     original_video_path = None
     original_video_name = None
     video_info = {}
     video_ready = False
+    video_version = int(time.time() * 1000)
 
 UPLOAD_TEMPLATE = """
 <!DOCTYPE html>
@@ -2205,13 +2208,19 @@ def editor():
     """Editor interface (only accessible after video is processed)"""
     if not video_ready or not current_video_path:
         return "No video loaded. Please upload a video first.", 400
-    video_url = url_for('serve_video')
+    # Bust browser cache by tagging video URL with version
+    video_url = url_for('serve_video', v=video_version)
     return render_template_string(HTML_TEMPLATE, video_url=video_url, original_video_name=original_video_name or '')
 
 @app.route('/serve_video')
 def serve_video():
     if video_ready and current_video_path and os.path.exists(current_video_path):
-        return send_file(current_video_path, mimetype='video/mp4')
+        response = make_response(send_file(current_video_path, mimetype='video/mp4'))
+        # Prevent caching to ensure fresh loads when swapping videos
+        response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
+        response.headers['Pragma'] = 'no-cache'
+        response.headers['Expires'] = '0'
+        return response
     return '', 404
 
 @app.route('/upload_video', methods=['POST'])
@@ -2425,7 +2434,7 @@ def process_video_file(video_path):
     Updates global processing_status
     """
     global current_video_path, original_video_path, original_video_name
-    global video_ready, processing_status, video_info
+    global video_ready, processing_status, video_info, video_version
     
     try:
         # Store original video information
@@ -2453,6 +2462,7 @@ def process_video_file(video_path):
         
         # Mark as ready
         video_ready = True
+        video_version = int(time.time() * 1000)
         processing_status = {
             "status": "complete",
             "progress": 100,
@@ -2479,7 +2489,7 @@ def start_server(video_path=None, port=5555, skip_conversion=False):
         port: Port number for the server (default: 5555)
         skip_conversion: Skip 720p conversion if True (only applies if video_path provided)
     """
-    global current_video_path, original_video_path, original_video_name, video_ready, video_info
+    global current_video_path, original_video_path, original_video_name, video_ready, video_info, video_version
     
     print("=" * 60)
     print(f"📹 Professional Video Annotation Editor")
@@ -2519,6 +2529,7 @@ def start_server(video_path=None, port=5555, skip_conversion=False):
         cap.release()
         
         video_ready = True
+        video_version = int(time.time() * 1000)
         print("✓ Video ready for annotation")
         print(f"Duration: {video_info['duration']:.1f}s")
     else:
