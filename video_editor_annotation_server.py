@@ -2707,8 +2707,8 @@ def convert_to_720p(input_path, output_dir=None, progress_callback=None, output_
     print(f"Original video resolution: {width}x{height}")
     
     # Check if conversion is needed
-    if height <= 720:
-        print(f"Video is already {height}p, no conversion needed")
+    if min(width, height) <= 720:
+        print(f"Video is already 720p (min dimension {min(width, height)}), no conversion needed")
         cap.release()
         if progress_callback:
             progress_callback(100, "Video ready (no conversion needed)")
