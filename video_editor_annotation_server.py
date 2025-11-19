@@ -967,11 +967,21 @@ HTML_TEMPLATE = """
             padding: 6px 8px;
             border-radius: 3px;
             font-size: 12px;
+            position: relative;
+            z-index: 1;
+            margin-bottom: 12px; /* Add breathing room between stacked fields */
         }
         
         .property-input:focus {
             outline: none;
             border-color: #007acc;
+            z-index: 100;
+        }
+        
+        /* Ensure dropdown menus appear above neighboring fields */
+        .annotation-dialog select.property-input {
+            position: relative;
+            z-index: 5;
         }
         
         /* Task Type Colors - Comprehensive list */
@@ -1242,7 +1252,13 @@ HTML_TEMPLATE = """
     <div class="annotation-dialog" id="newAnnotationDialog">
         <h3>➕ Add New Annotation</h3>
         <div style="margin: 20px 0;">
-            <label style="display: block; color: #969696; margin-bottom: 5px;">Task Type</label>
+            <label style="display: block; color: #969696; margin-bottom: 5px;">Task Category</label>
+            <select id="newTaskCategory" class="property-input" style="background: #3c3c3c; border: 1px solid #464647; color: #cccccc; padding: 8px; width: 100%;">
+                <option value="MDS-UPDRS">MDS-UPDRS</option>
+                <option value="MoCA">MoCA</option>
+            </select>
+            
+            <label style="display: block; color: #969696; margin-bottom: 5px; margin-top: 15px;">Task Type</label>
             <select id="newTaskType" class="property-input" style="background: #3c3c3c; border: 1px solid #464647; color: #cccccc; padding: 8px; width: 100%;">
                 <option value="3.1 Speech">3.1 Speech</option>
                 <option value="3.2 Facial Expression">3.2 Facial Expression</option>
@@ -1271,28 +1287,19 @@ HTML_TEMPLATE = """
                 <option value="Turning">Turning</option>
                 <!-- MoCA domains -->
                 <option value="Orientation">Orientation (MoCA)</option>
-                <option value="Visuospatial-Executive">Visuospatial-Executive (MoCA)</option>
-                <option value="Naming">Naming (MoCA)</option>
-                <option value="Memory">Memory (MoCA)</option>
-                <option value="Attention">Attention (MoCA)</option>
-                <option value="Language">Language (MoCA)</option>
-                <option value="Abstraction">Abstraction (MoCA)</option>
-                <option value="Delayed Recall">Delayed Recall (MoCA)</option>
-            </select>
-            
-            <label style="display: block; color: #969696; margin-bottom: 5px; margin-top: 15px;">Side</label>
-            <select id="newSide" class="property-input" style="background: #3c3c3c; border: 1px solid #464647; color: #cccccc; padding: 8px; width: 100%;">
-                <option value="bilateral">Bilateral</option>
-                <option value="left">Left</option>
-                <option value="right">Right</option>
-                <option value="n/a">N/A</option>
-            </select>
-            
-            <label style="display: block; color: #969696; margin-bottom: 5px; margin-top: 15px;">Duration (seconds)</label>
-            <input type="number" id="newDuration" value="5" min="0.5" max="30" step="0.5" class="property-input" style="background: #3c3c3c; border: 1px solid #464647; color: #cccccc; padding: 8px; width: 100%;">
-            
-            <label style="display: block; color: #969696; margin-bottom: 5px; margin-top: 15px;">Severity (UPDRS 0-4)</label>
-            <input type="number" id="newSeverity" value="0" min="0" max="4" class="property-input" style="background: #3c3c3c; border: 1px solid #464647; color: #cccccc; padding: 8px; width: 100%;">
+            <option value="Visuospatial-Executive">Visuospatial-Executive (MoCA)</option>
+            <option value="Naming">Naming (MoCA)</option>
+            <option value="Memory">Memory (MoCA)</option>
+            <option value="Attention">Attention (MoCA)</option>
+            <option value="Language">Language (MoCA)</option>
+            <option value="Abstraction">Abstraction (MoCA)</option>
+            <option value="Delayed Recall">Delayed Recall (MoCA)</option>
+        </select>
+        <label style="display: block; color: #969696; margin-bottom: 5px; margin-top: 15px;">Duration (seconds)</label>
+        <input type="number" id="newDuration" value="5" min="0.5" max="30" step="0.5" class="property-input" style="background: #3c3c3c; border: 1px solid #464647; color: #cccccc; padding: 8px; width: 100%;">
+        
+        <label style="display: block; color: #969696; margin-bottom: 5px; margin-top: 15px;">Severity (UPDRS 0-4)</label>
+        <input type="number" id="newSeverity" value="0" min="0" max="4" class="property-input" style="background: #3c3c3c; border: 1px solid #464647; color: #cccccc; padding: 8px; width: 100%;">
             
             <label style="display: block; color: #969696; margin-bottom: 5px; margin-top: 15px;">Track</label>
             <select id="newTrack" class="property-input" style="background: #3c3c3c; border: 1px solid #464647; color: #cccccc; padding: 8px; width: 100%;">
@@ -1326,10 +1333,100 @@ HTML_TEMPLATE = """
         // Store last used settings for convenience (but always allow changing)
         let lastUsedSettings = {
             task: 'Finger Tapping',
-            side: 'bilateral',
+            category: 'MDS-UPDRS',
             duration: 5,
             severity: 0
         };
+        
+        // Task catalog grouped by category to keep dropdowns manageable
+        const TASK_OPTIONS = {
+            'MDS-UPDRS': [
+                { value: 'Finger Tapping', label: 'Finger Tapping' },
+                { value: 'Hand Opening/Closing', label: 'Hand Opening/Closing' },
+                { value: 'Pronation-Supination', label: 'Pronation-Supination' },
+                { value: 'Rest Tremor', label: 'Rest Tremor' },
+                { value: 'Postural Tremor', label: 'Postural Tremor' },
+                { value: 'Kinetic Tremor', label: 'Kinetic Tremor' },
+                { value: 'Gait', label: 'Gait' },
+                { value: 'Facial Expression', label: 'Facial Expression' },
+                { value: 'Toe Tapping', label: 'Toe Tapping' },
+                { value: 'Leg Agility', label: 'Leg Agility' },
+                { value: 'Speech', label: 'Speech' },
+                { value: 'Writing', label: 'Writing' },
+                // MDS-UPDRS itemized tasks
+                { value: '3.1 Speech', label: '3.1 Speech' },
+                { value: '3.2 Facial Expression', label: '3.2 Facial Expression' },
+                { value: '3.4 Finger Tapping (Left)', label: '3.4 Finger Tapping (L)' },
+                { value: '3.4 Finger Tapping (Right)', label: '3.4 Finger Tapping (R)' },
+                { value: '3.5 Hand Movements (Left)', label: '3.5 Hand Movements (L)' },
+                { value: '3.5 Hand Movements (Right)', label: '3.5 Hand Movements (R)' },
+                { value: '3.6 Pronation-Supination Movements of Hands (Left)', label: '3.6 Pronation-Supination (L)' },
+                { value: '3.6 Pronation-Supination Movements of Hands (Right)', label: '3.6 Pronation-Supination (R)' },
+                { value: '3.7 Toe Tapping (Left)', label: '3.7 Toe Tapping (L)' },
+                { value: '3.7 Toe Tapping (Right)', label: '3.7 Toe Tapping (R)' },
+                { value: '3.8 Leg Agility (Left)', label: '3.8 Leg Agility (L)' },
+                { value: '3.8 Leg Agility (Right)', label: '3.8 Leg Agility (R)' },
+                { value: '3.9 Arising from Chair', label: '3.9 Arising from Chair' },
+                { value: '3.10 Gait', label: '3.10 Gait' },
+                { value: '3.11 Freezing of Gait', label: '3.11 Freezing of Gait' },
+                { value: '3.12 Postural Stability', label: '3.12 Postural Stability' },
+                { value: '3.13 Posture', label: '3.13 Posture' },
+                { value: '3.14 Global Spontaneity of Movement (Body Bradykinesia)', label: '3.14 Global Spontaneity of Movement (Body Bradykinesia)' },
+                { value: '3.15 Postural Tremor of the Hands', label: '3.15 Postural Tremor of the Hands' },
+                { value: '3.16 Kinetic Tremor of the Hands (Left)', label: '3.16 Kinetic Tremor of the Hands (L)' },
+                { value: '3.16 Kinetic Tremor of the Hands (Right)', label: '3.16 Kinetic Tremor of the Hands (R)' },
+                { value: '3.17 Rest Tremor', label: '3.17 Rest Tremor' },
+                { value: '4.1 Dyskinesias (Yes/No)', label: '4.1 Dyskinesias (Yes/No)' },
+                { value: 'Turning', label: 'Turning' }
+            ],
+            'MoCA': [
+                { value: 'Orientation', label: 'Orientation (MoCA)' },
+                { value: 'Visuospatial-Executive', label: 'Visuospatial-Executive (MoCA)' },
+                { value: 'Naming', label: 'Naming (MoCA)' },
+                { value: 'Memory', label: 'Memory (MoCA)' },
+                { value: 'Attention', label: 'Attention (MoCA)' },
+                { value: 'Language', label: 'Language (MoCA)' },
+                { value: 'Abstraction', label: 'Abstraction (MoCA)' },
+                { value: 'Delayed Recall', label: 'Delayed Recall (MoCA)' }
+            ]
+        };
+        
+        function getCategoryForTask(task) {
+            if (TASK_OPTIONS['MoCA'].some(opt => opt.value === task)) {
+                return 'MoCA';
+            }
+            return 'MDS-UPDRS';
+        }
+        
+        function buildCategoryOptionsHTML(selectedCategory) {
+            return Object.keys(TASK_OPTIONS)
+                .map(cat => `<option value="${cat}" ${selectedCategory === cat ? 'selected' : ''}>${cat}</option>`)
+                .join('');
+        }
+        
+        function buildTaskOptionsHTML(category, selectedTask) {
+            const tasks = TASK_OPTIONS[category] || [];
+            return tasks.map(opt => `<option value="${opt.value}" ${opt.value === selectedTask ? 'selected' : ''}>${opt.label}</option>`).join('');
+        }
+        
+        function populateTaskSelect(selectEl, category, selectedTask) {
+            const tasks = TASK_OPTIONS[category] || [];
+            selectEl.innerHTML = buildTaskOptionsHTML(category, selectedTask || tasks[0]?.value || '');
+            if (selectedTask && !tasks.some(opt => opt.value === selectedTask) && tasks.length > 0) {
+                selectEl.value = tasks[0].value;
+            }
+        }
+        
+        function updateNewTaskOptions(selectedTask) {
+            const category = document.getElementById('newTaskCategory').value;
+            populateTaskSelect(document.getElementById('newTaskType'), category, selectedTask);
+        }
+        
+        const taskCategorySelect = document.getElementById('newTaskCategory');
+        if (taskCategorySelect) {
+            taskCategorySelect.addEventListener('change', () => updateNewTaskOptions());
+        }
+        updateNewTaskOptions(lastUsedSettings.task);
         
         // Initialize video
         video.addEventListener('loadedmetadata', () => {
@@ -1608,8 +1705,9 @@ HTML_TEMPLATE = """
         // Segment management
         function showNewAnnotationDialog() {
             // Use last settings for convenience, but ensure form is editable
+            document.getElementById('newTaskCategory').value = lastUsedSettings.category;
+            updateNewTaskOptions(lastUsedSettings.task);
             document.getElementById('newTaskType').value = lastUsedSettings.task;
-            document.getElementById('newSide').value = lastUsedSettings.side;
             document.getElementById('newDuration').value = lastUsedSettings.duration.toString();
             document.getElementById('newSeverity').value = lastUsedSettings.severity.toString();
             
@@ -1626,7 +1724,8 @@ HTML_TEMPLATE = """
         
         function createNewAnnotation() {
             const task = document.getElementById('newTaskType').value;
-            const side = document.getElementById('newSide').value;
+            const side = 'n/a'; // Side selection removed; default to not applicable
+            const category = document.getElementById('newTaskCategory').value;
             const duration = parseFloat(document.getElementById('newDuration').value);
             const severity = parseInt(document.getElementById('newSeverity').value);
             const track = parseInt(document.getElementById('newTrack').value);
@@ -1634,7 +1733,7 @@ HTML_TEMPLATE = """
             // Save settings for next time (convenience feature)
             lastUsedSettings = {
                 task: task,
-                side: side,
+                category: category,
                 duration: duration,
                 severity: severity
             };
@@ -1649,6 +1748,7 @@ HTML_TEMPLATE = """
                 end: end,
                 track: track,  // Use selected track
                 task: task,
+                category: category,
                 side: side,
                 severity: severity,
                 notes: ''
@@ -1887,6 +1987,7 @@ HTML_TEMPLATE = """
             if (!annotation) return;
             
             const content = document.getElementById('propertiesContent');
+            const category = annotation.category || getCategoryForTask(annotation.task);
             content.innerHTML = `
                 <div class="property-group">
                     <div class="property-label">Timing</div>
@@ -1899,30 +2000,16 @@ HTML_TEMPLATE = """
                 </div>
                 
                 <div class="property-group">
-                    <div class="property-label">Task Type</div>
-                    <select class="property-input" onchange="updateAnnotation(${annotation.id}, 'task', this.value)">
-                        <option value="Finger Tapping" ${annotation.task === 'Finger Tapping' ? 'selected' : ''}>Finger Tapping</option>
-                        <option value="Hand Opening/Closing" ${annotation.task === 'Hand Opening/Closing' ? 'selected' : ''}>Hand Opening/Closing</option>
-                        <option value="Pronation-Supination" ${annotation.task === 'Pronation-Supination' ? 'selected' : ''}>Pronation-Supination</option>
-                        <option value="Rest Tremor" ${annotation.task === 'Rest Tremor' ? 'selected' : ''}>Rest Tremor</option>
-                        <option value="Postural Tremor" ${annotation.task === 'Postural Tremor' ? 'selected' : ''}>Postural Tremor</option>
-                        <option value="Kinetic Tremor" ${annotation.task === 'Kinetic Tremor' ? 'selected' : ''}>Kinetic Tremor</option>
-                        <option value="Gait" ${annotation.task === 'Gait' ? 'selected' : ''}>Gait</option>
-                        <option value="Facial Expression" ${annotation.task === 'Facial Expression' ? 'selected' : ''}>Facial Expression</option>
-                        <option value="Toe Tapping" ${annotation.task === 'Toe Tapping' ? 'selected' : ''}>Toe Tapping</option>
-                        <option value="Leg Agility" ${annotation.task === 'Leg Agility' ? 'selected' : ''}>Leg Agility</option>
-                        <option value="Speech" ${annotation.task === 'Speech' ? 'selected' : ''}>Speech</option>
-                        <option value="Writing" ${annotation.task === 'Writing' ? 'selected' : ''}>Writing</option>
+                    <div class="property-label">Task Category</div>
+                    <select class="property-input" onchange="updateAnnotation(${annotation.id}, 'category', this.value)">
+                        ${buildCategoryOptionsHTML(category)}
                     </select>
                 </div>
                 
                 <div class="property-group">
-                    <div class="property-label">Side</div>
-                    <select class="property-input" onchange="updateAnnotation(${annotation.id}, 'side', this.value)">
-                        <option value="bilateral" ${annotation.side === 'bilateral' ? 'selected' : ''}>Bilateral</option>
-                        <option value="left" ${annotation.side === 'left' ? 'selected' : ''}>Left</option>
-                        <option value="right" ${annotation.side === 'right' ? 'selected' : ''}>Right</option>
-                        <option value="n/a" ${annotation.side === 'n/a' ? 'selected' : ''}>N/A</option>
+                    <div class="property-label">Task Type</div>
+                    <select class="property-input" onchange="updateAnnotation(${annotation.id}, 'task', this.value)">
+                        ${buildTaskOptionsHTML(category, annotation.task)}
                     </select>
                 </div>
                 
@@ -1953,6 +2040,13 @@ HTML_TEMPLATE = """
             const annotation = annotations.find(ann => ann.id === id);
             if (annotation) {
                 annotation[field] = value;
+                
+                if (field === 'category') {
+                    const tasks = TASK_OPTIONS[value] || [];
+                    if (annotation.task && !tasks.some(opt => opt.value === annotation.task) && tasks.length > 0) {
+                        annotation.task = tasks[0].value;
+                    }
+                }
                 
                 // Don't override track unless it doesn't exist
                 if (annotation.track === undefined) {
