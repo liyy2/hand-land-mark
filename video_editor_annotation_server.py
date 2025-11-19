@@ -4,7 +4,7 @@ Professional Video Editor-Style Annotation Server
 Timeline-based interface similar to Final Cut Pro / Premiere Pro
 """
 
-from flask import Flask, render_template_string, request, jsonify, send_file, url_for, make_response
+from flask import Flask, render_template_string, request, jsonify, send_file, url_for, make_response, redirect
 from flask_cors import CORS
 import os
 import json
@@ -282,6 +282,56 @@ UPLOAD_TEMPLATE = """
             border: 1px solid #ef4444;
         }
         
+        .top-controls {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            display: flex;
+            gap: 10px;
+            z-index: 100;
+        }
+
+        .update-btn, .feedback-btn {
+            width: auto;
+            padding: 10px 20px;
+            background: #2a2a3e;
+            border: 1px solid #3a3a4e;
+            color: #a0a0a0;
+            font-size: 13px;
+            cursor: pointer;
+            border-radius: 8px;
+            transition: all 0.3s ease;
+        }
+        
+        .update-btn:hover, .feedback-btn:hover {
+            background: #3a3a4e;
+            color: #ffffff;
+        }
+        
+        .update-btn:hover {
+            border-color: #007acc;
+        }
+        
+        .feedback-btn:hover {
+            border-color: #10b981;
+        }
+
+        .browse-btn {
+            padding: 12px 16px;
+            background: #2a2a3e;
+            border: 2px solid #3a3a4e;
+            color: #e0e0e0;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-size: 16px;
+        }
+        
+        .browse-btn:hover {
+            border-color: #007acc;
+            background: #3a3a4e;
+        }
+
         .file-info {
             display: none;
             background: #1a1a2e;
@@ -307,6 +357,14 @@ UPLOAD_TEMPLATE = """
     </style>
 </head>
 <body>
+    <div class="top-controls">
+        <button class="feedback-btn" onclick="window.location.href='mailto:yunyang.li@yale.edu?subject=Video Annotation Tool Feedback'">
+            📧 Feedback
+        </button>
+        <button class="update-btn" id="updateBtn" onclick="updateSoftware()">
+            🔄 Update Software
+        </button>
+    </div>
     <div class="upload-container">
         <h1>📹 Video Annotation Editor</h1>
         <p class="subtitle">Upload a video or provide a path to begin timeline annotation</p>
@@ -345,6 +403,54 @@ UPLOAD_TEMPLATE = """
     </div>
     
     <script>
+        async function updateSoftware() {
+            const btn = document.getElementById('updateBtn');
+            if (btn) btn.disabled = true;
+            const originalText = btn.textContent;
+            btn.textContent = 'Updating...';
+            
+            showNotification('Updating software from git...');
+            try {
+                const response = await fetch('/admin/update', { method: 'POST' });
+                const data = await response.json();
+                if (data.success) {
+                    showNotification('Update complete. Reloading...');
+                    console.log('Update output:', data.output);
+                    setTimeout(() => window.location.reload(), 2000);
+                } else {
+                    const errorMsg = data.error || 'Unknown error';
+                    showNotification('Update failed: ' + errorMsg);
+                    console.error('Update failed:', data);
+                    btn.textContent = originalText;
+                    if (btn) btn.disabled = false;
+                }
+            } catch (err) {
+                showNotification('Update error: ' + err.message);
+                console.error('Update error:', err);
+                btn.textContent = originalText;
+                if (btn) btn.disabled = false;
+            }
+        }
+
+        function showNotification(message) {
+            // Simple notification (can be enhanced)
+            const notification = document.createElement('div');
+            notification.style.position = 'fixed';
+            notification.style.bottom = '20px';
+            notification.style.right = '20px';
+            notification.style.background = '#007acc';
+            notification.style.color = 'white';
+            notification.style.padding = '10px 20px';
+            notification.style.borderRadius = '4px';
+            notification.style.zIndex = '1000';
+            notification.textContent = message;
+            document.body.appendChild(notification);
+            
+            setTimeout(() => {
+                notification.remove();
+            }, 3000);
+        }
+
         let selectedFile = null;
         const uploadArea = document.getElementById('uploadArea');
         const fileInput = document.getElementById('fileInput');
@@ -1111,7 +1217,6 @@ HTML_TEMPLATE = """
         <button class="toolbar-btn" onclick="saveProject()">💾 Save</button>
         <button class="toolbar-btn" onclick="loadProject()">📁 Open</button>
         <button class="toolbar-btn" onclick="showShortcuts()">⌨️ Shortcuts</button>
-        <button class="toolbar-btn" id="updateBtn" onclick="updateSoftware()">⬆️ Update</button>
     </div>
     
     <div class="main-container">
@@ -2334,7 +2439,7 @@ def index():
 def editor():
     """Editor interface (only accessible after video is processed)"""
     if not video_ready or not current_video_path:
-        return "No video loaded. Please upload a video first.", 400
+        return redirect(url_for('index'))
     # Bust browser cache by tagging video URL with version
     video_url = url_for('serve_video', v=video_version)
     return render_template_string(HTML_TEMPLATE, video_url=video_url, original_video_name=original_video_name or '')
@@ -2476,7 +2581,7 @@ def update_software():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
-def convert_to_720p(input_path, output_dir=None, progress_callback=None):
+def convert_to_720p(input_path, output_dir=None, progress_callback=None, output_path=None):
     """
     Convert video to 720p resolution for better performance
     
@@ -2484,10 +2589,18 @@ def convert_to_720p(input_path, output_dir=None, progress_callback=None):
         input_path: Path to input video
         output_dir: Directory for output video (None = create temp dir)
         progress_callback: Optional callback function(progress_percent, message)
+        output_path: Optional specific path for the output file. If provided and exists, conversion is skipped.
     
     Returns:
         Path to converted video (or original if no conversion needed)
     """
+    # Check if output_path is provided and exists
+    if output_path and os.path.exists(output_path):
+        print(f"Found cached 720p video at: {output_path}")
+        if progress_callback:
+            progress_callback(100, "Using cached 720p video")
+        return output_path
+
     # Open video
     cap = cv2.VideoCapture(input_path)
     if not cap.isOpened():
@@ -2525,12 +2638,19 @@ def convert_to_720p(input_path, output_dir=None, progress_callback=None):
     print(f"Converting to: {new_width}x{new_height}")
     
     # Create output path
-    if output_dir is None:
+    if output_path:
+        # Use provided output path
+        # Ensure directory exists
+        os.makedirs(os.path.dirname(os.path.abspath(output_path)), exist_ok=True)
+    elif output_dir is None:
         output_dir = tempfile.mkdtemp(prefix="video_720p_")
-    
-    base_name = os.path.basename(input_path)
-    name, ext = os.path.splitext(base_name)
-    output_path = os.path.join(output_dir, f"{name}_720p{ext}")
+        base_name = os.path.basename(input_path)
+        name, ext = os.path.splitext(base_name)
+        output_path = os.path.join(output_dir, f"{name}_720p{ext}")
+    else:
+        base_name = os.path.basename(input_path)
+        name, ext = os.path.splitext(base_name)
+        output_path = os.path.join(output_dir, f"{name}_720p{ext}")
     
     # Setup video writer with H264 codec for better compatibility
     fourcc = cv2.VideoWriter_fourcc(*'H264')
@@ -2607,8 +2727,15 @@ def process_video_file(video_path):
             processing_status["progress"] = progress
             processing_status["message"] = message
         
+        # Determine cache path in media directory
+        media_dir = os.path.join(REPO_ROOT, 'media')
+        os.makedirs(media_dir, exist_ok=True)
+        
+        name, ext = os.path.splitext(original_video_name)
+        cache_path = os.path.join(media_dir, f"{name}_720p.mp4")
+        
         # Convert video to 720p
-        converted_path = convert_to_720p(video_path, progress_callback=update_progress)
+        converted_path = convert_to_720p(video_path, progress_callback=update_progress, output_path=cache_path)
         current_video_path = converted_path
         
         # Get video info
