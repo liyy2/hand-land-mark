@@ -2748,62 +2748,64 @@ def convert_to_720p(input_path, output_dir=None, progress_callback=None, output_
         name, ext = os.path.splitext(base_name)
         output_path = os.path.join(output_dir, f"{name}_720p{ext}")
     
-    # Setup video writer with H264 codec for better compatibility
-    fourcc = cv2.VideoWriter_fourcc(*'H264')
-    out = cv2.VideoWriter(output_path, fourcc, fps, (new_width, new_height))
+    print(f"Converting video to 720p using FFmpeg...")
     
-    # If H264 fails, try mp4v
-    if not out.isOpened():
-        fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-        out = cv2.VideoWriter(output_path, fourcc, fps, (new_width, new_height))
+    # Determine scaling parameter
+    if width < height: # Portrait
+        scale_param = "720:-2"
+    else: # Landscape
+        scale_param = "-2:720"
+        
+    # Construct FFmpeg command
+    # -y: Overwrite output files
+    # -i: Input file
+    # -vf: Video filter (scaling)
+    # -c:v: Video codec (libx264)
+    # -preset: Encoding speed (fast/faster/veryfast)
+    # -crf: Constant Rate Factor (quality, 23 is default)
+    # -c:a: Audio codec (copy to avoid re-encoding audio if possible, or aac)
+    cmd = [
+        "ffmpeg", "-y",
+        "-i", input_path,
+        "-vf", f"scale={scale_param}",
+        "-c:v", "libx264",
+        "-preset", "faster",
+        "-crf", "23",
+        "-c:a", "aac", 
+        output_path
+    ]
     
-    # Process frames with progress tracking
-    print(f"Converting video to 720p: {new_width}x{new_height}")
-    
-    frame_count = 0
-    last_progress = 0
-    
-    # Use tqdm for console, callback for web
-    if progress_callback:
-        # Web mode - use callback
-        while True:
-            ret, frame = cap.read()
-            if not ret:
-                break
+    try:
+        if progress_callback:
+            progress_callback(10, "Starting FFmpeg conversion...")
             
-            # Resize frame
-            resized_frame = cv2.resize(frame, (new_width, new_height), interpolation=cv2.INTER_AREA)
-            out.write(resized_frame)
+        # Run FFmpeg
+        process = subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            universal_newlines=True
+        )
+        
+        # We could parse stderr for progress, but for now just wait
+        stdout, stderr = process.communicate()
+        
+        if process.returncode != 0:
+            print(f"FFmpeg error: {stderr}")
+            raise RuntimeError(f"FFmpeg failed with exit code {process.returncode}")
             
-            frame_count += 1
-            progress = int((frame_count / total_frames) * 100)
+        if progress_callback:
+            progress_callback(100, "Conversion complete")
             
-            # Update every 5% or on last frame
-            if progress >= last_progress + 5 or frame_count == total_frames:
-                progress_callback(progress, f"Converting: {frame_count}/{total_frames} frames")
-                last_progress = progress
-    else:
-        # Console mode - use tqdm
-        with tqdm(total=total_frames, desc="Converting", unit="frames", 
-                  bar_format='{l_bar}{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}]') as pbar:
-            while True:
-                ret, frame = cap.read()
-                if not ret:
-                    break
-                
-                # Resize frame
-                resized_frame = cv2.resize(frame, (new_width, new_height), interpolation=cv2.INTER_AREA)
-                out.write(resized_frame)
-                
-                pbar.update(1)
-    
-    # Cleanup
-    cap.release()
-    out.release()
-    cv2.destroyAllWindows()
-    
-    print(f"✓ Conversion complete! Saved to: {output_path}")
+    except Exception as e:
+        print(f"FFmpeg conversion failed: {e}")
+        # Fallback to OpenCV if FFmpeg fails? 
+        # For now, let's raise the error as the user specifically requested acceleration
+        raise e
+
     return output_path
+    
+
 
 def process_video_file(video_path):
     """
