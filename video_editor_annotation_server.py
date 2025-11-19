@@ -16,6 +16,7 @@ import tempfile
 import argparse
 from tqdm import tqdm
 import sys
+import subprocess
 
 app = Flask(__name__)
 CORS(app)
@@ -33,6 +34,7 @@ video_info = {}
 video_ready = False  # Track if video is processed and ready
 upload_folder = tempfile.mkdtemp(prefix="video_uploads_")
 processing_status = {"status": "idle", "progress": 0, "message": ""}
+REPO_ROOT = os.path.abspath(os.path.dirname(__file__))
 
 
 def reset_video_state():
@@ -1095,6 +1097,7 @@ HTML_TEMPLATE = """
         <button class="toolbar-btn" onclick="saveProject()">💾 Save</button>
         <button class="toolbar-btn" onclick="loadProject()">📁 Open</button>
         <button class="toolbar-btn" onclick="showShortcuts()">⌨️ Shortcuts</button>
+        <button class="toolbar-btn" id="updateBtn" onclick="updateSoftware()">⬆️ Update</button>
     </div>
     
     <div class="main-container">
@@ -2083,23 +2086,37 @@ HTML_TEMPLATE = """
         }
         
         function loadNewVideo() {
-            // Check if there are unsaved annotations
+            // Check if there are unsaved annotations; ask for a single confirmation
             if (annotations.length > 0) {
-                const confirmMsg = `You have ${annotations.length} annotation(s). Do you want to save before loading a new video?`;
-                if (confirm(confirmMsg)) {
-                    // Show save dialog, then redirect after saving
-                    saveProject();
-                    // Note: User needs to complete save dialog before redirect
-                    showNotification('Please complete save dialog, then click "New Video" again to load new video');
-                } else {
-                    // Just redirect without saving
-                    if (confirm('Are you sure you want to discard current annotations?')) {
-                        window.location.href = '/';
-                    }
+                const confirmMsg = `You have ${annotations.length} annotation(s). Have you saved them? Starting a new video will discard them. Continue?`;
+                if (!confirm(confirmMsg)) {
+                    return;
                 }
-            } else {
-                // No annotations, just redirect
-                window.location.href = '/';
+            }
+            // Redirect to upload page to start fresh
+            window.location.href = '/';
+        }
+        
+        async function updateSoftware() {
+            const btn = document.getElementById('updateBtn');
+            if (btn) btn.disabled = true;
+            showNotification('Updating software from git...');
+            try {
+                const response = await fetch('/admin/update', { method: 'POST' });
+                const data = await response.json();
+                if (data.success) {
+                    showNotification('Update complete. Reload the page to use the latest code.');
+                    console.log('Update output:', data.output);
+                } else {
+                    const errorMsg = data.error || 'Unknown error';
+                    showNotification('Update failed: ' + errorMsg);
+                    console.error('Update failed:', data);
+                }
+            } catch (err) {
+                showNotification('Update error: ' + err.message);
+                console.error('Update error:', err);
+            } finally {
+                if (btn) btn.disabled = false;
             }
         }
         
@@ -2264,6 +2281,29 @@ def get_processing_status():
 @app.route('/get_annotations')
 def get_annotations():
     return jsonify({'annotations': annotations})
+
+
+@app.route('/admin/update', methods=['POST'])
+def update_software():
+    """Run git pull to update the codebase."""
+    try:
+        result = subprocess.run(
+            ['git', '-C', REPO_ROOT, 'pull'],
+            capture_output=True,
+            text=True
+        )
+        if result.returncode != 0:
+            return jsonify({
+                'success': False,
+                'output': result.stdout.strip(),
+                'error': result.stderr.strip()
+            }), 500
+        return jsonify({
+            'success': True,
+            'output': result.stdout.strip()
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 
 def convert_to_720p(input_path, output_dir=None, progress_callback=None):
