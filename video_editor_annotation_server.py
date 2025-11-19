@@ -34,6 +34,18 @@ video_ready = False  # Track if video is processed and ready
 upload_folder = tempfile.mkdtemp(prefix="video_uploads_")
 processing_status = {"status": "idle", "progress": 0, "message": ""}
 
+
+def reset_video_state():
+    """Clear server-side state before loading a new video."""
+    global annotations, current_video_path, original_video_path, original_video_name
+    global video_info, video_ready
+    annotations = []
+    current_video_path = None
+    original_video_path = None
+    original_video_name = None
+    video_info = {}
+    video_ready = False
+
 UPLOAD_TEMPLATE = """
 <!DOCTYPE html>
 <html>
@@ -2181,7 +2193,7 @@ def editor():
 
 @app.route('/serve_video')
 def serve_video():
-    if current_video_path and os.path.exists(current_video_path):
+    if video_ready and current_video_path and os.path.exists(current_video_path):
         return send_file(current_video_path, mimetype='video/mp4')
     return '', 404
 
@@ -2205,6 +2217,7 @@ def upload_video():
         
         # Start processing in background thread
         import threading
+        reset_video_state()
         processing_status = {"status": "processing", "progress": 0, "message": "Starting conversion..."}
         thread = threading.Thread(target=process_video_file, args=(upload_path,))
         thread.daemon = True
@@ -2232,6 +2245,7 @@ def process_path():
         
         # Start processing in background thread
         import threading
+        reset_video_state()
         processing_status = {"status": "processing", "progress": 0, "message": "Starting conversion..."}
         thread = threading.Thread(target=process_video_file, args=(video_path,))
         thread.daemon = True
