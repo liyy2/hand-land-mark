@@ -18,6 +18,7 @@ from tqdm import tqdm
 import sys
 import time
 import subprocess
+import threading
 
 app = Flask(__name__)
 CORS(app)
@@ -1637,6 +1638,7 @@ HTML_TEMPLATE = """
             
             // Update segments
             renderSegments();
+            updatePlayhead();
         }
         
         function updatePlayhead() {
@@ -1645,21 +1647,43 @@ HTML_TEMPLATE = """
             playhead.style.left = position + 'px';
         }
         
-        function zoomIn() {
-            timelineZoom = Math.min(100, timelineZoom * 1.5);
+        function applyZoomPreservingView(previousZoom) {
+            const scrollable = document.getElementById('timelineScrollable');
+            if (!scrollable || !videoDuration || videoDuration <= 0) {
+                updateTimeline();
+                return;
+            }
+            
+            // Keep the playhead anchored relative to current viewport position
+            const playheadBefore = video.currentTime * previousZoom + 130;
+            const offsetFromLeft = playheadBefore - scrollable.scrollLeft;
+            
             updateTimeline();
+            
+            const playheadAfter = video.currentTime * timelineZoom + 130;
+            const targetScroll = playheadAfter - offsetFromLeft;
+            const maxScroll = Math.max(0, scrollable.scrollWidth - scrollable.clientWidth);
+            scrollable.scrollLeft = Math.max(0, Math.min(targetScroll, maxScroll));
+        }
+        
+        function zoomIn() {
+            const previousZoom = timelineZoom;
+            timelineZoom = Math.min(100, timelineZoom * 1.5);
+            applyZoomPreservingView(previousZoom);
         }
         
         function zoomOut() {
+            const previousZoom = timelineZoom;
             timelineZoom = Math.max(2, timelineZoom / 1.5);
-            updateTimeline();
+            applyZoomPreservingView(previousZoom);
         }
         
         function fitToWindow() {
             const scrollable = document.getElementById('timelineScrollable');
+            const previousZoom = timelineZoom;
             const availableWidth = scrollable.clientWidth - 130;
             timelineZoom = availableWidth / videoDuration;
-            updateTimeline();
+            applyZoomPreservingView(previousZoom);
         }
         
         function toggleSecondTrack() {
@@ -2410,9 +2434,19 @@ def update_software():
                 'output': result.stdout.strip(),
                 'error': result.stderr.strip()
             }), 500
+
+        def restart_server():
+            """Restart the server after a short delay."""
+            time.sleep(1)
+            print("Restarting server...")
+            os.execv(sys.executable, [sys.executable] + sys.argv)
+
+        # Start restart in background
+        threading.Thread(target=restart_server).start()
+
         return jsonify({
             'success': True,
-            'output': result.stdout.strip()
+            'output': result.stdout.strip() + "\nServer is restarting..."
         })
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
