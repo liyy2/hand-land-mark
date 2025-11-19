@@ -1244,18 +1244,40 @@ HTML_TEMPLATE = """
         <div style="margin: 20px 0;">
             <label style="display: block; color: #969696; margin-bottom: 5px;">Task Type</label>
             <select id="newTaskType" class="property-input" style="background: #3c3c3c; border: 1px solid #464647; color: #cccccc; padding: 8px; width: 100%;">
-                <option value="Finger Tapping">Finger Tapping</option>
-                <option value="Hand Opening/Closing">Hand Opening/Closing</option>
-                <option value="Pronation-Supination">Pronation-Supination</option>
-                <option value="Rest Tremor">Rest Tremor</option>
-                <option value="Postural Tremor">Postural Tremor</option>
-                <option value="Kinetic Tremor">Kinetic Tremor</option>
-                <option value="Gait">Gait</option>
-                <option value="Facial Expression">Facial Expression</option>
-                <option value="Toe Tapping">Toe Tapping</option>
-                <option value="Leg Agility">Leg Agility</option>
-                <option value="Speech">Speech</option>
-                <option value="Writing">Writing</option>
+                <option value="3.1 Speech">3.1 Speech</option>
+                <option value="3.2 Facial Expression">3.2 Facial Expression</option>
+                <option value="3.4 Finger Tapping (Left)">3.4 Finger Tapping (L)</option>
+                <option value="3.4 Finger Tapping (Right)">3.4 Finger Tapping (R)</option>
+                <option value="3.5 Hand Movements (Left)">3.5 Hand Movements (L)</option>
+                <option value="3.5 Hand Movements (Right)">3.5 Hand Movements (R)</option>
+                <option value="3.6 Pronation-Supination Movements of Hands (Left)">3.6 Pronation-Supination (L)</option>
+                <option value="3.6 Pronation-Supination Movements of Hands (Right)">3.6 Pronation-Supination (R)</option>
+                <option value="3.7 Toe Tapping (Left)">3.7 Toe Tapping (L)</option>
+                <option value="3.7 Toe Tapping (Right)">3.7 Toe Tapping (R)</option>
+                <option value="3.8 Leg Agility (Left)">3.8 Leg Agility (L)</option>
+                <option value="3.8 Leg Agility (Right)">3.8 Leg Agility (R)</option>
+                <option value="3.9 Arising from Chair">3.9 Arising from Chair</option>
+                <option value="3.12 Postural Stability">3.12 Postural Stability</option>
+                <option value="3.13 Posture">3.13 Posture</option>
+                <option value="3.14 Global Spontaneity of Movement (Body Bradykinesia)">3.14 Global Spontaneity of Movement (Body Bradykinesia)</option>
+                <option value="3.15 Postural Tremor of the Hands">3.15 Postural Tremor of the Hands</option>
+                <option value="3.16 Kinetic Tremor of the Hands (Left)">3.16 Kinetic Tremor of the Hands (L)</option>
+                <option value="3.16 Kinetic Tremor of the Hands (Right)">3.16 Kinetic Tremor of the Hands (R)</option>
+                <option value="3.17 Rest Tremor">3.17 Rest Tremor</option>
+                <option value="4.1 Dyskinesias (Yes/No)">4.1 Dyskinesias (Yes/No)</option>
+                <!-- TUG-related (forward-compatible) -->
+                <option value="3.10 Gait">3.10 Gait</option>
+                <option value="3.11 Freezing of Gait">3.11 Freezing of Gait</option>
+                <option value="Turning">Turning</option>
+                <!-- MoCA domains -->
+                <option value="Orientation">Orientation (MoCA)</option>
+                <option value="Visuospatial-Executive">Visuospatial-Executive (MoCA)</option>
+                <option value="Naming">Naming (MoCA)</option>
+                <option value="Memory">Memory (MoCA)</option>
+                <option value="Attention">Attention (MoCA)</option>
+                <option value="Language">Language (MoCA)</option>
+                <option value="Abstraction">Abstraction (MoCA)</option>
+                <option value="Delayed Recall">Delayed Recall (MoCA)</option>
             </select>
             
             <label style="display: block; color: #969696; margin-bottom: 5px; margin-top: 15px;">Side</label>
