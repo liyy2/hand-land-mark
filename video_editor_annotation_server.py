@@ -1341,19 +1341,6 @@ HTML_TEMPLATE = """
         // Task catalog grouped by category to keep dropdowns manageable
         const TASK_OPTIONS = {
             'MDS-UPDRS': [
-                { value: 'Finger Tapping', label: 'Finger Tapping' },
-                { value: 'Hand Opening/Closing', label: 'Hand Opening/Closing' },
-                { value: 'Pronation-Supination', label: 'Pronation-Supination' },
-                { value: 'Rest Tremor', label: 'Rest Tremor' },
-                { value: 'Postural Tremor', label: 'Postural Tremor' },
-                { value: 'Kinetic Tremor', label: 'Kinetic Tremor' },
-                { value: 'Gait', label: 'Gait' },
-                { value: 'Facial Expression', label: 'Facial Expression' },
-                { value: 'Toe Tapping', label: 'Toe Tapping' },
-                { value: 'Leg Agility', label: 'Leg Agility' },
-                { value: 'Speech', label: 'Speech' },
-                { value: 'Writing', label: 'Writing' },
-                // MDS-UPDRS itemized tasks
                 { value: '3.1 Speech', label: '3.1 Speech' },
                 { value: '3.2 Facial Expression', label: '3.2 Facial Expression' },
                 { value: '3.4 Finger Tapping (Left)', label: '3.4 Finger Tapping (L)' },
