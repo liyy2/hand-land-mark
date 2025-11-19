@@ -2716,10 +2716,14 @@ def convert_to_720p(input_path, output_dir=None, progress_callback=None, output_
     
     # Calculate new dimensions maintaining aspect ratio
     aspect_ratio = width / height
-    if aspect_ratio > 16/9:  # Wider than 16:9
+    
+    if width < height: # Portrait
+        new_width = 720
+        new_height = int(new_width / aspect_ratio)
+    elif aspect_ratio > 16/9:  # Wider than 16:9
         new_width = 1280
         new_height = int(1280 / aspect_ratio)
-    else:  # Taller than or equal to 16:9
+    else:  # Taller than or equal to 16:9 (Landscape)
         new_height = 720
         new_width = int(720 * aspect_ratio)
     
