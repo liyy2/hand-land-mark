@@ -2439,6 +2439,30 @@ def update_software():
             """Restart the server after a short delay."""
             time.sleep(1)
             print("Restarting server...")
+            
+            # Close all open file descriptors except stdin, stdout, stderr
+            try:
+                import psutil
+                p = psutil.Process(os.getpid())
+                for handler in p.open_files() + p.connections():
+                    try:
+                        os.close(handler.fd)
+                    except Exception:
+                        pass
+            except ImportError:
+                # Fallback if psutil is not installed
+                import resource
+                maxfd = resource.getrlimit(resource.RLIMIT_NOFILE)[0]
+                if (maxfd == resource.RLIM_INFINITY):
+                    maxfd = 1024
+                for fd in range(3, maxfd):
+                    try:
+                        os.close(fd)
+                    except OSError:
+                        pass
+            except Exception as e:
+                print(f"Error closing FDs: {e}")
+
             os.execv(sys.executable, [sys.executable] + sys.argv)
 
         # Start restart in background
