@@ -19,6 +19,7 @@ import sys
 import time
 import subprocess
 import threading
+import re
 
 app = Flask(__name__)
 CORS(app)
@@ -2787,11 +2788,30 @@ def convert_to_720p(input_path, output_dir=None, progress_callback=None, output_
             universal_newlines=True
         )
         
-        # We could parse stderr for progress, but for now just wait
-        stdout, stderr = process.communicate()
+        # Parse stderr for progress
+        while True:
+            line = process.stderr.readline()
+            if not line and process.poll() is not None:
+                break
+            
+            if line:
+                # Parse frame= N
+                match = re.search(r"frame=\s*(\d+)", line)
+                if match:
+                    current_frame = int(match.group(1))
+                    if total_frames > 0:
+                        progress = int((current_frame / total_frames) * 100)
+                        # Update every 5% or so to avoid spamming
+                        if progress_callback and (progress % 5 == 0 or progress == 100):
+                             progress_callback(progress, f"Converting: {progress}%")
+
+        # Wait for process to finish
+        process.wait()
         
         if process.returncode != 0:
-            print(f"FFmpeg error: {stderr}")
+            # Read any remaining stderr
+            stderr_output = process.stderr.read()
+            print(f"FFmpeg error: {stderr_output}")
             raise RuntimeError(f"FFmpeg failed with exit code {process.returncode}")
             
         if progress_callback:
