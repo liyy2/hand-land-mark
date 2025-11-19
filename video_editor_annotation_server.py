@@ -2772,6 +2772,7 @@ def convert_to_720p(input_path, output_dir=None, progress_callback=None, output_
         "-c:v", "libx264",
         "-preset", "faster",
         "-crf", "23",
+        "-pix_fmt", "yuv420p", # Ensure browser compatibility
         "-c:a", "aac", 
         output_path
     ]
