@@ -291,6 +291,24 @@ UPLOAD_TEMPLATE = """
             z-index: 100;
         }
 
+        .restart-btn {
+            width: auto;
+            padding: 10px 20px;
+            background: #2a2a3e;
+            border: 1px solid #3a3a4e;
+            color: #a0a0a0;
+            font-size: 13px;
+            cursor: pointer;
+            border-radius: 8px;
+            transition: all 0.3s ease;
+        }
+        
+        .restart-btn:hover {
+            background: #3a3a4e;
+            color: #ffffff;
+            border-color: #ff9800;
+        }
+
         .update-btn, .feedback-btn {
             width: auto;
             padding: 10px 20px;
@@ -361,8 +379,11 @@ UPLOAD_TEMPLATE = """
         <button class="feedback-btn" onclick="window.location.href='mailto:yunyang.li@yale.edu?subject=Video Annotation Tool Feedback'">
             📧 Feedback
         </button>
+        <button class="restart-btn" id="restartBtn" onclick="restartServer()">
+            🔄 Restart Server
+        </button>
         <button class="update-btn" id="updateBtn" onclick="updateSoftware()">
-            🔄 Update Software
+            ⬇️ Update Software
         </button>
     </div>
     <div class="upload-container">
@@ -403,6 +424,32 @@ UPLOAD_TEMPLATE = """
     </div>
     
     <script>
+        async function restartServer() {
+            const btn = document.getElementById('restartBtn');
+            if (btn) btn.disabled = true;
+            const originalText = btn.textContent;
+            btn.textContent = 'Restarting...';
+            
+            showNotification('Restarting server...');
+            try {
+                const response = await fetch('/admin/restart', { method: 'POST' });
+                const data = await response.json();
+                if (data.success) {
+                    showNotification('Server restarting. Reloading page...');
+                    setTimeout(() => window.location.reload(), 2000);
+                } else {
+                    const errorMsg = data.error || 'Unknown error';
+                    showNotification('Restart failed: ' + errorMsg);
+                    btn.textContent = originalText;
+                    if (btn) btn.disabled = false;
+                }
+            } catch (err) {
+                showNotification('Restart error: ' + err.message);
+                btn.textContent = originalText;
+                if (btn) btn.disabled = false;
+            }
+        }
+
         async function updateSoftware() {
             const btn = document.getElementById('updateBtn');
             if (btn) btn.disabled = true;
@@ -2522,6 +2569,51 @@ def get_processing_status():
 @app.route('/get_annotations')
 def get_annotations():
     return jsonify({'annotations': annotations})
+
+
+@app.route('/admin/restart', methods=['POST'])
+def restart_server_route():
+    """Restart the server without git pull."""
+    try:
+        def restart_server():
+            """Restart the server after a short delay."""
+            time.sleep(1)
+            print("Restarting server...")
+            
+            # Close all open file descriptors except stdin, stdout, stderr
+            try:
+                import psutil
+                p = psutil.Process(os.getpid())
+                for handler in p.open_files() + p.connections():
+                    try:
+                        os.close(handler.fd)
+                    except Exception:
+                        pass
+            except ImportError:
+                # Fallback if psutil is not installed
+                import resource
+                maxfd = resource.getrlimit(resource.RLIMIT_NOFILE)[0]
+                if (maxfd == resource.RLIM_INFINITY):
+                    maxfd = 1024
+                for fd in range(3, maxfd):
+                    try:
+                        os.close(fd)
+                    except OSError:
+                        pass
+            except Exception as e:
+                print(f"Error closing FDs: {e}")
+
+            os.execv(sys.executable, [sys.executable] + sys.argv)
+
+        # Start restart in background
+        threading.Thread(target=restart_server).start()
+
+        return jsonify({
+            'success': True,
+            'output': "Server is restarting..."
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 
 @app.route('/admin/update', methods=['POST'])
