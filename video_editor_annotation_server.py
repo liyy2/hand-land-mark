@@ -2462,8 +2462,11 @@ HTML_TEMPLATE = """
         function showContextMenu(e, annotation) {
             e.preventDefault();
             const menu = document.getElementById('contextMenu');
+            // Measure menu first, then place with clamping
+            menu.style.visibility = 'hidden';
             menu.style.display = 'block';
-            // Position with viewport clamping so lower items stay visible
+            menu.style.left = '0px';
+            menu.style.top = '0px';
             const menuRect = menu.getBoundingClientRect();
             let posX = e.clientX;
             let posY = e.clientY;
@@ -2475,6 +2478,7 @@ HTML_TEMPLATE = """
             }
             menu.style.left = posX + 'px';
             menu.style.top = posY + 'px';
+            menu.style.visibility = 'visible';
             
             selectedSegment = annotation;
             selectSegment(annotation.id);
