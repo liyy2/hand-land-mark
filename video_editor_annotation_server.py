@@ -39,6 +39,20 @@ upload_folder = tempfile.mkdtemp(prefix="video_uploads_")
 processing_status = {"status": "idle", "progress": 0, "message": ""}
 REPO_ROOT = os.path.abspath(os.path.dirname(__file__))
 video_version = 0  # Incremented whenever a new video is ready
+def get_git_version():
+    """Return the current short git commit hash for display."""
+    try:
+        result = subprocess.run(
+            ['git', '-C', REPO_ROOT, 'rev-parse', '--short', 'HEAD'],
+            capture_output=True,
+            text=True,
+            check=True
+        )
+        return result.stdout.strip()
+    except Exception:
+        return "unknown"
+
+GIT_VERSION = get_git_version()
 
 
 def reset_video_state():
@@ -373,6 +387,14 @@ UPLOAD_TEMPLATE = """
             color: #a0a0a0;
             font-size: 13px;
         }
+        
+        .version-note {
+            text-align: center;
+            color: #7a7a7a;
+            font-size: 12px;
+            margin-top: 16px;
+            letter-spacing: 0.3px;
+        }
     </style>
 </head>
 <body>
@@ -422,6 +444,7 @@ UPLOAD_TEMPLATE = """
         </div>
         
         <div id="statusMessage"></div>
+        <div class="version-note">Version: {{ git_version }}</div>
     </div>
     
     <script>
@@ -2661,7 +2684,7 @@ HTML_TEMPLATE = """
 @app.route('/')
 def index():
     """Landing page with upload interface"""
-    return render_template_string(UPLOAD_TEMPLATE)
+    return render_template_string(UPLOAD_TEMPLATE, git_version=GIT_VERSION)
 
 @app.route('/editor')
 def editor():
