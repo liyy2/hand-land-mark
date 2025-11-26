@@ -1375,6 +1375,9 @@ HTML_TEMPLATE = """
         <div class="context-menu-item" onclick="deleteSelected()">Delete</div>
         <div class="context-menu-separator"></div>
         <div class="context-menu-item" onclick="splitAtPlayhead()">Split at Playhead</div>
+        <div class="context-menu-separator"></div>
+        <div class="context-menu-item" onclick="setStartToCurrentTime(selectedSegment?.id)">Set Start @ Current</div>
+        <div class="context-menu-item" onclick="setEndToCurrentTime(selectedSegment?.id)">Set End @ Current</div>
     </div>
     
     <!-- Shortcuts Modal -->
@@ -2650,6 +2653,18 @@ HTML_TEMPLATE = """
                     if (e.metaKey || e.ctrlKey) {
                         e.preventDefault();
                         duplicateSelected();
+                    }
+                    break;
+                case 'c':
+                    if (e.metaKey || e.ctrlKey) {
+                        e.preventDefault();
+                        copySegment();
+                    }
+                    break;
+                case 'v':
+                    if (e.metaKey || e.ctrlKey) {
+                        e.preventDefault();
+                        pasteSegment();
                     }
                     break;
                 case 's':
