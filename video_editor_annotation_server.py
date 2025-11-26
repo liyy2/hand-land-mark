@@ -2240,6 +2240,10 @@ HTML_TEMPLATE = """
                     <input type="number" class="property-input" value="${annotation.end.toFixed(2)}" 
                            onchange="updateAnnotation(${annotation.id}, 'end', parseFloat(this.value))"
                            step="0.1" min="0" max="${videoDuration}" style="margin-top: 5px;">
+                    <div style="display: flex; gap: 8px; margin-top: 6px;">
+                        <button class="toolbar-btn" style="flex: 1;" onclick="setStartToCurrentTime(${annotation.id})">Set Start @ Current</button>
+                        <button class="toolbar-btn" style="flex: 1;" onclick="setEndToCurrentTime(${annotation.id})">Set End @ Current</button>
+                    </div>
                 </div>
                 
                 <div class="property-group">
@@ -2304,6 +2308,27 @@ HTML_TEMPLATE = """
                 renderSegments();
                 selectSegment(id);
             }
+        }
+        
+        function setStartToCurrentTime(id) {
+            const annotation = annotations.find(ann => ann.id === id);
+            if (!annotation) return;
+            const newStart = Math.max(0, Math.min(video.currentTime, annotation.end - 0.5));
+            annotation.start = newStart;
+            if (annotation.end - annotation.start < 0.5) {
+                annotation.end = Math.min(videoDuration, annotation.start + 0.5);
+            }
+            renderSegments();
+            selectSegment(id);
+        }
+        
+        function setEndToCurrentTime(id) {
+            const annotation = annotations.find(ann => ann.id === id);
+            if (!annotation) return;
+            const newEnd = Math.min(videoDuration, Math.max(video.currentTime, annotation.start + 0.5));
+            annotation.end = newEnd;
+            renderSegments();
+            selectSegment(id);
         }
         
         function deleteSelected() {
