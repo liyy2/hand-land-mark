@@ -2463,8 +2463,18 @@ HTML_TEMPLATE = """
             e.preventDefault();
             const menu = document.getElementById('contextMenu');
             menu.style.display = 'block';
-            menu.style.left = e.clientX + 'px';
-            menu.style.top = e.clientY + 'px';
+            // Position with viewport clamping so lower items stay visible
+            const menuRect = menu.getBoundingClientRect();
+            let posX = e.clientX;
+            let posY = e.clientY;
+            if (posX + menuRect.width > window.innerWidth) {
+                posX = Math.max(0, window.innerWidth - menuRect.width - 8);
+            }
+            if (posY + menuRect.height > window.innerHeight) {
+                posY = Math.max(0, window.innerHeight - menuRect.height - 8);
+            }
+            menu.style.left = posX + 'px';
+            menu.style.top = posY + 'px';
             
             selectedSegment = annotation;
             selectSegment(annotation.id);
