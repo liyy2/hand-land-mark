@@ -2750,9 +2750,16 @@ HTML_TEMPLATE = """
                             annotations = annotations.concat(loadedAnnotations);
                         }
                         
-                        // Update duration if provided; otherwise keep current
-                        if (data.videoDuration && !Number.isNaN(data.videoDuration)) {
-                            videoDuration = data.videoDuration;
+                        // Update duration if provided; otherwise keep current (backward compatible)
+                        const durationFromRoot = data.videoDuration;
+                        const durationFromMeta = data.metadata?.videoDurationSeconds;
+                        const newDuration = (!Number.isNaN(durationFromRoot) && durationFromRoot) ? durationFromRoot :
+                                            ((!Number.isNaN(durationFromMeta) && durationFromMeta) ? durationFromMeta : null);
+                        if (newDuration) {
+                            if (videoDuration && Math.abs(videoDuration - newDuration) > 0.01) {
+                                alert(`Warning: Loaded project video duration (${newDuration.toFixed(2)}s) differs from current video (${videoDuration.toFixed(2)}s).`);
+                            }
+                            videoDuration = newDuration;
                         }
                         
                         // Ensure track count covers new annotations
