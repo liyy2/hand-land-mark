@@ -450,49 +450,53 @@ UPLOAD_TEMPLATE = """
             top: 20px;
             right: 20px;
             display: flex;
-            gap: 10px;
-            padding: 10px 12px;
-            background: rgba(20, 22, 33, 0.72);
+            gap: 8px;
+            padding: 12px;
+            background: linear-gradient(145deg, rgba(25,28,40,0.78), rgba(18,20,30,0.88));
             border: 1px solid rgba(255,255,255,0.08);
-            border-radius: 14px;
-            backdrop-filter: blur(12px);
-            box-shadow: 0 10px 30px rgba(0,0,0,0.35);
+            border-radius: 16px;
+            backdrop-filter: blur(18px);
+            box-shadow: 0 16px 40px rgba(0,0,0,0.4);
             z-index: 5;
         }
         
         .top-controls button {
             width: auto;
-            padding: 10px 14px;
+            padding: 10px 16px;
             border-radius: 999px;
-            border: 1px solid rgba(255,255,255,0.1);
-            background: linear-gradient(135deg, rgba(255,255,255,0.08), rgba(255,255,255,0.02));
-            color: #f4f6ff;
+            border: 1px solid rgba(255,255,255,0.12);
+            background: linear-gradient(135deg, rgba(255,255,255,0.14), rgba(255,255,255,0.06));
+            color: #f7f9ff;
             font-size: 12px;
-            font-weight: 600;
-            letter-spacing: 0.2px;
+            font-weight: 700;
+            letter-spacing: 0.25px;
             cursor: pointer;
-            transition: all 0.25s ease;
-            box-shadow: 0 6px 18px rgba(0,0,0,0.25);
+            transition: all 0.22s ease;
+            box-shadow: inset 0 1px 0 rgba(255,255,255,0.08), 0 6px 16px rgba(0,0,0,0.28);
         }
         
         .top-controls button:hover:not(:disabled) {
             transform: translateY(-1px);
-            box-shadow: 0 12px 26px rgba(0,0,0,0.32);
+            box-shadow: inset 0 1px 0 rgba(255,255,255,0.12), 0 12px 26px rgba(0,0,0,0.35);
+            border-color: rgba(255,255,255,0.2);
         }
         
         .feedback-btn {
-            border-color: rgba(16,185,129,0.35);
-            color: #9cf1d4;
+            color: #c8ffe6;
+            border-color: rgba(16,185,129,0.5);
+            background: linear-gradient(135deg, rgba(16,185,129,0.28), rgba(16,185,129,0.12));
         }
         
         .update-btn {
-            border-color: rgba(0,122,204,0.45);
-            color: #a9d9ff;
+            color: #cfe7ff;
+            border-color: rgba(0,122,204,0.55);
+            background: linear-gradient(135deg, rgba(0,122,204,0.3), rgba(0,122,204,0.12));
         }
         
         .restart-btn {
-            border-color: rgba(255,193,7,0.35);
-            color: #ffe9a6;
+            color: #ffefc2;
+            border-color: rgba(255,193,7,0.5);
+            background: linear-gradient(135deg, rgba(255,193,7,0.32), rgba(255,193,7,0.14));
         }
 
         .browse-btn {
