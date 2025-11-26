@@ -25,7 +25,7 @@ app = Flask(__name__)
 CORS(app)
 
 # Flask configuration for file uploads
-# app.config['MAX_CONTENT_LENGTH'] = 2 * 1024 * 1024 * 1024  # 2GB max file size (Disabled to allow unlimited uploads)
+# app.config['MAX_CONTENT_LENGTH'] = 2 * 1024 * 1024 * 1024  # Removed to allow larger uploads
 app.config['UPLOAD_FOLDER'] = tempfile.mkdtemp(prefix="video_uploads_")
 
 # Store annotations and video info
@@ -453,48 +453,40 @@ UPLOAD_TEMPLATE = """
             gap: 10px;
             z-index: 5;
         }
-
+        
+        .top-controls button {
+            width: auto;
+            padding: 10px 16px;
+            border-radius: 999px;
+            border: 1px solid rgba(255,255,255,0.14);
+            background: rgba(34,35,46,0.9);
+            color: #d9e6ff;
+            font-size: 12px;
+            font-weight: 600;
+            letter-spacing: 0.2px;
+            cursor: pointer;
+            transition: all 0.25s ease;
+            box-shadow: 0 6px 18px rgba(0,0,0,0.25);
+        }
+        
+        .top-controls button:hover:not(:disabled) {
+            transform: translateY(-1px);
+            box-shadow: 0 10px 24px rgba(0,0,0,0.28);
+        }
+        
+        .feedback-btn {
+            border-color: rgba(16,185,129,0.35);
+            color: #9cf1d4;
+        }
+        
+        .update-btn {
+            border-color: rgba(0,122,204,0.45);
+            color: #a9d9ff;
+        }
+        
         .restart-btn {
-            width: auto;
-            padding: 10px 20px;
-            background: #2a2a3e;
-            border: 1px solid #3a3a4e;
-            color: #a0a0a0;
-            font-size: 13px;
-            cursor: pointer;
-            border-radius: 8px;
-            transition: all 0.3s ease;
-        }
-        
-        .restart-btn:hover {
-            background: #3a3a4e;
-            color: #ffffff;
-            border-color: #ff9800;
-        }
-
-        .update-btn, .feedback-btn {
-            width: auto;
-            padding: 10px 20px;
-            background: #2a2a3e;
-            border: 1px solid #3a3a4e;
-            color: #a0a0a0;
-            font-size: 13px;
-            cursor: pointer;
-            border-radius: 8px;
-            transition: all 0.3s ease;
-        }
-        
-        .update-btn:hover, .feedback-btn:hover {
-            background: #3a3a4e;
-            color: #ffffff;
-        }
-        
-        .update-btn:hover {
-            border-color: #007acc;
-        }
-        
-        .feedback-btn:hover {
-            border-color: #10b981;
+            border-color: rgba(255,193,7,0.35);
+            color: #ffe9a6;
         }
 
         .browse-btn {
@@ -571,7 +563,7 @@ UPLOAD_TEMPLATE = """
         <div class="upload-area" id="uploadArea" onclick="document.getElementById('fileInput').click()">
             <div class="upload-icon">🎬</div>
             <div class="upload-text">Click to upload or drag & drop</div>
-            <div class="upload-hint">Supports MP4, AVI, MOV (max 2GB)</div>
+            <div class="upload-hint">Supports MP4, AVI, MOV</div>
         </div>
         
         <input type="file" id="fileInput" accept="video/*">
