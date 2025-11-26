@@ -987,11 +987,11 @@ HTML_TEMPLATE = """
             background: #007acc;
             border: 2px solid #1a86d3;
             border-radius: 4px;
-            cursor: move;
+            cursor: grab; /* Clear affordance for drag */
             user-select: none;
             display: flex;
             align-items: center;
-            padding: 0 8px;
+            padding: 0 12px; /* Larger grab area */
             overflow: hidden;
             transition: box-shadow 0.2s;
             z-index: 5; /* Base z-index for segments */
@@ -1025,7 +1025,7 @@ HTML_TEMPLATE = """
         .segment-resize-handle {
             position: absolute;
             top: 0;
-            width: 8px;
+            width: 10px; /* Easier to grab on trackpads */
             height: 100%;
             cursor: ew-resize;
             background: transparent;
@@ -1485,12 +1485,50 @@ HTML_TEMPLATE = """
         
         // Store last used settings for convenience (but always allow changing)
         let lastUsedSettings = {
-            task: 'Finger Tapping',
+            task: '3.1 Speech', // Default to a real option so first annotation has a label
             category: 'MDS-UPDRS',
             duration: 5,
             severity: 0,
             track: 0
         };
+        
+        // Deterministic color palette for task-based coloring
+        const COLOR_PALETTE = [
+            '#4c9aff', '#69f0ae', '#ffab40', '#ff5252',
+            '#b388ff', '#4dd0e1', '#ff80ab', '#90a4ae',
+            '#ffd54f', '#64b5f6', '#ce93d8', '#a5d6a7'
+        ];
+        
+        function hashString(str) {
+            let hash = 0;
+            for (let i = 0; i < str.length; i++) {
+                hash = ((hash << 5) - hash) + str.charCodeAt(i);
+                hash |= 0; // Convert to 32bit integer
+            }
+            return Math.abs(hash);
+        }
+        
+        function getColorForTask(task) {
+            const key = task || 'default';
+            const idx = hashString(key) % COLOR_PALETTE.length;
+            return COLOR_PALETTE[idx];
+        }
+        
+        function shadeColor(color, percent) {
+            const f = parseInt(color.slice(1), 16);
+            const t = percent < 0 ? 0 : 255;
+            const p = Math.abs(percent) / 100;
+            const R = f >> 16;
+            const G = f >> 8 & 0x00FF;
+            const B = f & 0x0000FF;
+            const newColor = '#' + (
+                0x1000000 +
+                (Math.round((t - R) * p) + R) * 0x10000 +
+                (Math.round((t - G) * p) + G) * 0x100 +
+                (Math.round((t - B) * p) + B)
+            ).toString(16).slice(1);
+            return newColor;
+        }
         
         // Task catalog grouped by category to keep dropdowns manageable
         const TASK_OPTIONS = {
@@ -1923,14 +1961,18 @@ HTML_TEMPLATE = """
             // Use last settings for convenience, but ensure form is editable
             document.getElementById('newTaskCategory').value = lastUsedSettings.category;
             updateNewTaskOptions(lastUsedSettings.task);
-            document.getElementById('newTaskType').value = lastUsedSettings.task;
+            const taskSelect = document.getElementById('newTaskType');
+            // If the stored task isn't available, fall back to the first option
+            if (!taskSelect.value) {
+                const categoryOptions = TASK_OPTIONS[lastUsedSettings.category] || [];
+                taskSelect.value = categoryOptions[0]?.value || '';
+            }
             document.getElementById('newDuration').value = lastUsedSettings.duration.toString();
             document.getElementById('newSeverity').value = lastUsedSettings.severity.toString();
             refreshTrackSelectors(lastUsedSettings.track || 0);
             document.getElementById('newTrack').value = Math.min(lastUsedSettings.track || 0, trackCount - 1).toString();
             
             // Ensure the select elements are not disabled and have all options
-            const taskSelect = document.getElementById('newTaskType');
             taskSelect.disabled = false;
             
             document.getElementById('newAnnotationDialog').style.display = 'block';
@@ -1941,13 +1983,18 @@ HTML_TEMPLATE = """
         }
         
         function createNewAnnotation() {
-            const task = document.getElementById('newTaskType').value;
+            let task = document.getElementById('newTaskType').value;
             const side = 'n/a'; // Side selection removed; default to not applicable
             const category = document.getElementById('newTaskCategory').value;
             const duration = parseFloat(document.getElementById('newDuration').value);
             const severity = parseInt(document.getElementById('newSeverity').value);
             const rawTrack = parseInt(document.getElementById('newTrack').value);
             const track = Number.isNaN(rawTrack) ? 0 : Math.min(rawTrack, trackCount - 1);
+            
+            if (!task) {
+                const tasks = TASK_OPTIONS[category] || [];
+                task = tasks[0]?.value || 'Untitled';
+            }
             
             // Save settings for next time (convenience feature)
             lastUsedSettings = {
@@ -2011,6 +2058,12 @@ HTML_TEMPLATE = """
             segment.style.left = (annotation.start * timelineZoom) + 'px';
             segment.style.width = ((annotation.end - annotation.start) * timelineZoom) + 'px';
             
+            // Color coding by task
+            const baseColor = getColorForTask(annotation.task);
+            const darker = shadeColor(baseColor, -15);
+            segment.style.background = `linear-gradient(135deg, ${baseColor}, ${darker})`;
+            segment.style.borderColor = darker;
+            
             // Label
             const label = document.createElement('div');
             label.className = 'segment-label';
@@ -2066,8 +2119,11 @@ HTML_TEMPLATE = """
                 const deltaX = e.clientX - dragStartX;
                 const deltaY = e.clientY - startY;
                 
+                // On mac trackpads small jitters can prevent the drag; accept slight movement
+                const dragStartSatisfied = hasStartedDragging || Math.abs(e.clientX - startX) >= 2;
+                
                 // Only start dragging if moved beyond threshold
-                if (!hasStartedDragging && Math.abs(e.clientX - startX) < dragThreshold) {
+                if (!hasStartedDragging && (!dragStartSatisfied || Math.abs(e.clientX - startX) < dragThreshold)) {
                     return;
                 }
                 
