@@ -955,7 +955,7 @@ HTML_TEMPLATE = """
             background: #1e1e1e;
             border: 1px solid #3e3e42;
             border-radius: 2px;
-            overflow: hidden;
+            overflow: visible; /* Allow selection glow to show at edges (time 0) */
         }
         
         .track-duration-bg {
@@ -1004,9 +1004,10 @@ HTML_TEMPLATE = """
         
         .timeline-segment.selected {
             border-color: #ffeb3b;
-            box-shadow: 0 0 0 3px rgba(255, 235, 59, 0.8), 0 0 12px rgba(255, 235, 59, 0.6);
-            outline: 2px solid rgba(255, 235, 59, 0.9);
-            outline-offset: 1px;
+            box-shadow: 
+                0 0 0 3px rgba(255, 235, 59, 0.8),
+                0 0 12px rgba(255, 235, 59, 0.6),
+                inset 0 0 0 2px rgba(255, 235, 59, 0.9); /* Inner outline still visible if outer is clipped */
             z-index: 20;
         }
         
