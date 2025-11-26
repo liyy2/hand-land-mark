@@ -452,11 +452,11 @@ UPLOAD_TEMPLATE = """
             display: flex;
             gap: 8px;
             padding: 12px;
-            background: linear-gradient(145deg, rgba(25,28,40,0.78), rgba(18,20,30,0.88));
-            border: 1px solid rgba(255,255,255,0.08);
+            background: linear-gradient(145deg, rgba(255,255,255,0.08), rgba(255,255,255,0.02));
+            border: 1px solid rgba(255,255,255,0.1);
             border-radius: 16px;
             backdrop-filter: blur(18px);
-            box-shadow: 0 16px 40px rgba(0,0,0,0.4);
+            box-shadow: 0 16px 40px rgba(0,0,0,0.28);
             z-index: 5;
         }
         
@@ -464,8 +464,8 @@ UPLOAD_TEMPLATE = """
             width: auto;
             padding: 10px 16px;
             border-radius: 999px;
-            border: 1px solid rgba(255,255,255,0.12);
-            background: linear-gradient(135deg, rgba(255,255,255,0.14), rgba(255,255,255,0.06));
+            border: 1px solid rgba(255,255,255,0.16);
+            background: linear-gradient(135deg, rgba(255,255,255,0.16), rgba(255,255,255,0.06));
             color: #f7f9ff;
             font-size: 12px;
             font-weight: 700;
