@@ -167,9 +167,7 @@ UPLOAD_TEMPLATE = """
         
         body {
             font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background: radial-gradient(120% 120% at 20% 20%, rgba(0,122,204,0.15), transparent),
-                        radial-gradient(80% 80% at 80% 0%, rgba(16,185,129,0.12), transparent),
-                        #0f1117;
+            background: #0f1117;
             color: #e0e0e0;
             min-height: 100vh;
             display: flex;
@@ -180,11 +178,21 @@ UPLOAD_TEMPLATE = """
             overflow: auto;
         }
         
+        body::before {
+            content: '';
+            position: fixed;
+            inset: 0;
+            background: radial-gradient(120% 120% at 20% 20%, rgba(0,122,204,0.15), transparent),
+                        radial-gradient(80% 80% at 80% 0%, rgba(16,185,129,0.12), transparent);
+            z-index: 0;
+            pointer-events: none;
+        }
+        
         .glow {
-            position: absolute;
+            position: fixed;
             filter: blur(80px);
             opacity: 0.45;
-            z-index: 0;
+            z-index: 1;
         }
         .glow.a { width: 380px; height: 380px; background: #1a86d3; top: -120px; left: -80px; }
         .glow.b { width: 420px; height: 420px; background: #10b981; bottom: -140px; right: -120px; }
@@ -199,7 +207,7 @@ UPLOAD_TEMPLATE = """
             border: 1px solid rgba(255,255,255,0.06);
             backdrop-filter: blur(10px);
             position: relative;
-            z-index: 1;
+            z-index: 2;
         }
         
         h1 {
@@ -443,7 +451,7 @@ UPLOAD_TEMPLATE = """
             right: 20px;
             display: flex;
             gap: 10px;
-            z-index: 100;
+            z-index: 5;
         }
 
         .restart-btn {
