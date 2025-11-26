@@ -1473,6 +1473,7 @@ HTML_TEMPLATE = """
         let isResizing = false;
         let isPlayheadDragging = false; // Track playhead dragging state globally
         let justFinishedDraggingPlayhead = false; // Track if we just finished dragging
+        let justFinishedDraggingSegment = false; // Ignore stray clicks after segment drag/resize
         let dragStartX = 0;
         let segmentStartPos = 0;
         let segmentStartWidth = 0;
@@ -1747,7 +1748,7 @@ HTML_TEMPLATE = """
             const timelineContent = document.getElementById('timelineContent');
             timelineContent.addEventListener('click', (e) => {
                 // Don't process clicks if we were just dragging the playhead
-                if (isPlayheadDragging || justFinishedDraggingPlayhead) {
+                if (isPlayheadDragging || justFinishedDraggingPlayhead || isDragging || isResizing || justFinishedDraggingSegment) {
                     return;
                 }
                 
@@ -2059,6 +2060,7 @@ HTML_TEMPLATE = """
             const segment = document.querySelector(`.timeline-segment[data-id="${annotation.id}"]`);
             let pendingFrame = null;
             let pendingLeft = segmentStartPos * timelineZoom;
+            e.preventDefault();
             
             const handleDrag = (e) => {
                 const deltaX = e.clientX - dragStartX;
@@ -2123,6 +2125,8 @@ HTML_TEMPLATE = """
                         segment.style.left = (annotation.start * timelineZoom) + 'px';
                     }
                     updateProperties(annotation);
+                    justFinishedDraggingSegment = true;
+                    setTimeout(() => { justFinishedDraggingSegment = false; }, 120);
                 }
                 // No need to select here since we already selected on mousedown
                 document.removeEventListener('mousemove', handleDrag);
@@ -2141,6 +2145,7 @@ HTML_TEMPLATE = """
             const originalEnd = annotation.end;
             
             const segment = document.querySelector(`.timeline-segment[data-id="${annotation.id}"]`);
+            e.preventDefault();
             
             const handleResize = (e) => {
                 if (!isResizing) return;
@@ -2175,6 +2180,8 @@ HTML_TEMPLATE = """
                 document.removeEventListener('mousemove', handleResize);
                 document.removeEventListener('mouseup', stopResize);
                 updateProperties(annotation);
+                justFinishedDraggingSegment = true;
+                setTimeout(() => { justFinishedDraggingSegment = false; }, 120);
             };
             
             document.addEventListener('mousemove', handleResize);
