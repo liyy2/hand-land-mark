@@ -53,6 +53,83 @@ def get_git_version():
         return "unknown"
 
 GIT_VERSION = get_git_version()
+GUIDE_HTML = """
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Annotation Tool Guide</title>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #1b1b1f; color: #e0e0e0; padding: 30px; line-height: 1.6; }
+        h1, h2, h3 { color: #ffffff; }
+        a, button { color: #fff; background: #007acc; border: none; padding: 10px 14px; border-radius: 6px; cursor: pointer; text-decoration: none; }
+        a:hover, button:hover { background: #1a86d3; }
+        .section { margin-bottom: 22px; padding: 16px; background: #22232b; border: 1px solid #30313a; border-radius: 10px; }
+        code { background: rgba(255,255,255,0.08); padding: 2px 6px; border-radius: 4px; }
+        ul { margin: 8px 0 0 18px; }
+    </style>
+</head>
+<body>
+    <button onclick="history.back()">← Back</button>
+    <h1>Clinical Video Annotation Tool – Full Guide</h1>
+    
+    <div class="section">
+        <h2>Workflow</h2>
+        <ul>
+            <li>Upload a video (or enter a path) on the front page and start processing.</li>
+            <li>Add annotations at the playhead, drag/resize them on the timeline, save to JSON.</li>
+            <li>Load JSON via Open (choose Append or Replace). Duration mismatches will warn you.</li>
+        </ul>
+    </div>
+    
+    <div class="section">
+        <h2>Timeline & Tracks</h2>
+        <ul>
+            <li>Tracks are stacked; add/remove via timeline header or shortcuts. Drag vertically to move between tracks; new tracks auto-create as needed.</li>
+            <li>Color coding is deterministic per task; selected segments glow yellow (visible at time 0).</li>
+            <li>Zoom with +/- buttons; Fit to window; scroll horizontally/vertically when many tracks.</li>
+        </ul>
+    </div>
+    
+    <div class="section">
+        <h2>Annotations</h2>
+        <ul>
+            <li><strong>Create:</strong> “Add Annotation” or <code>M</code>; choose task/category, duration, severity, track.</li>
+            <li><strong>Move/Resize:</strong> Drag body to move; drag edges to trim; drag vertically to change track.</li>
+            <li><strong>Playhead trims:</strong> “Set Start @ Current” (<code>[</code>) and “Set End @ Current” (<code>]</code>) in properties or context menu.</li>
+            <li><strong>Context menu (right-click a segment):</strong> Cut/Copy/Paste, Delete, Split at Playhead, Set Start/End @ Current, Move to Previous/Next Track.</li>
+        </ul>
+    </div>
+    
+    <div class="section">
+        <h2>Saving & Loading</h2>
+        <ul>
+            <li><strong>Save (💾 or Cmd/Ctrl+S):</strong> Downloads JSON with annotations and metadata (video name, duration seconds).</li>
+            <li><strong>Open:</strong> Click “Open,” pick Append or Replace, then choose a JSON. Track count auto-expands; duration mismatch prompts a warning.</li>
+        </ul>
+    </div>
+    
+    <div class="section">
+        <h2>Shortcuts</h2>
+        <ul>
+            <li>Play/Pause <code>Space</code>; Split <code>S</code>; Add Annotation <code>M</code></li>
+            <li>Delete <code>Delete/Backspace</code>; Duplicate <code>Cmd/Ctrl+D</code>; Copy/Paste <code>Cmd/Ctrl+C/V</code></li>
+            <li>Trim to playhead <code>[</code> / <code>]</code></li>
+            <li>Move track up/down <code>Cmd/Ctrl+↑</code> / <code>Cmd/Ctrl+↓</code></li>
+            <li>Save <code>Cmd/Ctrl+S</code></li>
+        </ul>
+    </div>
+    
+    <div class="section">
+        <h2>Tips</h2>
+        <ul>
+            <li>If dragging is tricky on a trackpad, start from the body (grab cursor); resize handles are widened.</li>
+            <li>Selection glow extends beyond track edges for visibility at time 0.</li>
+            <li>Context menu repositions to stay in view near edges.</li>
+        </ul>
+    </div>
+</body>
+</html>
+"""
 
 
 def reset_video_state():
@@ -412,6 +489,9 @@ UPLOAD_TEMPLATE = """
     <div class="upload-container">
         <h1>📹 Video Annotation Editor</h1>
         <p class="subtitle">Upload a video or provide a path to begin timeline annotation</p>
+        <div style="text-align: center; margin-bottom: 10px;">
+            <a href="/guide" style="color: #80c7ff; text-decoration: underline;">Open Full User Guide</a>
+        </div>
         
         <details style="margin-top: 12px; margin-bottom: 20px; padding: 12px; background: rgba(255,255,255,0.03); border: 1px solid #3a3a4e; border-radius: 8px;">
             <summary style="color: #e0e0e0; cursor: pointer; font-weight: 600;">📘 Quick Guide</summary>
@@ -1320,6 +1400,7 @@ HTML_TEMPLATE = """
         <div style="width: 1px; height: 20px; background: #464647; margin-left: auto;"></div>
         <button class="toolbar-btn" onclick="saveProject()">💾 Save</button>
         <button class="toolbar-btn" id="openBtn" onclick="showOpenMenu()">📁 Open</button>
+        <button class="toolbar-btn" onclick="window.open('/guide', '_blank')">📘 Guide</button>
         <button class="toolbar-btn" id="shortcutsBtn" onclick="showShortcuts()">⌨️ Shortcuts</button>
     </div>
     <!-- Hidden file input for loading projects -->
@@ -2972,6 +3053,11 @@ def editor():
     # Bust browser cache by tagging video URL with version
     video_url = url_for('serve_video', v=video_version)
     return render_template_string(HTML_TEMPLATE, video_url=video_url, original_video_name=original_video_name or '')
+
+@app.route('/guide')
+def guide():
+    """Serve the in-app guide page"""
+    return render_template_string(GUIDE_HTML)
 
 @app.route('/serve_video')
 def serve_video():
