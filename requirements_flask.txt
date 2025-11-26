@@ -9,3 +9,5 @@ mediapipe==0.10.8
 matplotlib==3.7.2
 seaborn==0.12.2
 eventlet==0.33.3
+flask-cors==5.0.0
+tqdm==4.67.1

@@ -1305,7 +1305,9 @@ HTML_TEMPLATE = """
     <div class="timeline-section">
         <div class="timeline-header">
             <span style="font-size: 12px; color: #969696;">Timeline</span>
-            <button class="toolbar-btn" onclick="toggleSecondTrack()" id="trackToggleBtn">Add Track 2</button>
+            <button class="toolbar-btn" onclick="addTrack()">Add Track</button>
+            <button class="toolbar-btn" onclick="removeTrack()" id="removeTrackBtn" disabled>Remove Track</button>
+            <span style="font-size: 11px; color: #969696;">Tracks: <span id="trackCountLabel">1</span></span>
             <div class="zoom-controls">
                 <button class="zoom-btn" onclick="zoomOut()">−</button>
                 <span style="font-size: 11px; color: #969696; padding: 0 8px;">Zoom</span>
@@ -1325,10 +1327,6 @@ HTML_TEMPLATE = """
                         <!-- Track 1 -->
                         <div class="timeline-track" data-track="0" style="height: 60px;">
                             <div class="track-label">Track 1</div>
-                        </div>
-                        <!-- Track 2 (optional) -->
-                        <div class="timeline-track" data-track="1" style="height: 60px; display: none;">
-                            <div class="track-label">Track 2</div>
                         </div>
                     </div>
                     
@@ -1456,10 +1454,7 @@ HTML_TEMPLATE = """
         <input type="number" id="newSeverity" value="0" min="0" max="4" class="property-input" style="background: #3c3c3c; border: 1px solid #464647; color: #cccccc; padding: 8px; width: 100%;">
             
             <label style="display: block; color: #969696; margin-bottom: 5px; margin-top: 15px;">Track</label>
-            <select id="newTrack" class="property-input" style="background: #3c3c3c; border: 1px solid #464647; color: #cccccc; padding: 8px; width: 100%;">
-                <option value="0">Track 1</option>
-                <option value="1" id="track2Option" style="display: none;">Track 2</option>
-            </select>
+            <select id="newTrack" class="property-input" style="background: #3c3c3c; border: 1px solid #464647; color: #cccccc; padding: 8px; width: 100%;"></select>
         </div>
         <div style="display: flex; gap: 10px;">
             <button class="toolbar-btn" onclick="createNewAnnotation()" style="background: #007acc; color: white; flex: 1;">Create at Current Time</button>
@@ -1482,14 +1477,15 @@ HTML_TEMPLATE = """
         let videoDuration = 0;
         let annotations = [];
         let clipboard = null;
-        let hasSecondTrack = false; // Track if second track is visible
+        let trackCount = 1; // Number of visible tracks
         
         // Store last used settings for convenience (but always allow changing)
         let lastUsedSettings = {
             task: 'Finger Tapping',
             category: 'MDS-UPDRS',
             duration: 5,
-            severity: 0
+            severity: 0,
+            track: 0
         };
         
         // Task catalog grouped by category to keep dropdowns manageable
@@ -1568,6 +1564,85 @@ HTML_TEMPLATE = """
             taskCategorySelect.addEventListener('change', () => updateNewTaskOptions());
         }
         updateNewTaskOptions(lastUsedSettings.task);
+
+        function buildTrackOptionsHTML(selectedTrack = 0) {
+            let options = '';
+            for (let i = 0; i < trackCount; i++) {
+                options += `<option value="${i}" ${selectedTrack === i ? 'selected' : ''}>Track ${i + 1}</option>`;
+            }
+            return options;
+        }
+        
+        function rebuildTracks() {
+            const tracksContainer = document.getElementById('timelineTracks');
+            if (!tracksContainer) return;
+            tracksContainer.innerHTML = '';
+            for (let i = 0; i < trackCount; i++) {
+                const track = document.createElement('div');
+                track.className = 'timeline-track';
+                track.dataset.track = i.toString();
+                track.style.height = '60px';
+                
+                const label = document.createElement('div');
+                label.className = 'track-label';
+                label.textContent = `Track ${i + 1}`;
+                track.appendChild(label);
+                
+                tracksContainer.appendChild(track);
+            }
+        }
+        
+        function refreshTrackSelectors(preferredTrack) {
+            const newTrackSelect = document.getElementById('newTrack');
+            if (newTrackSelect) {
+                const nextValue = preferredTrack !== undefined ? preferredTrack : parseInt(newTrackSelect.value || '0');
+                const safeValue = Math.max(0, Math.min(nextValue, trackCount - 1));
+                newTrackSelect.innerHTML = buildTrackOptionsHTML(safeValue);
+                newTrackSelect.value = safeValue.toString();
+            }
+            
+            if (selectedSegment) {
+                updateProperties(selectedSegment);
+            }
+            
+            const removeTrackBtn = document.getElementById('removeTrackBtn');
+            if (removeTrackBtn) {
+                removeTrackBtn.disabled = trackCount <= 1;
+            }
+            
+            const trackCountLabel = document.getElementById('trackCountLabel');
+            if (trackCountLabel) {
+                trackCountLabel.textContent = trackCount;
+            }
+        }
+        
+        function setTrackCount(count) {
+            trackCount = Math.max(1, count);
+            rebuildTracks();
+            refreshTrackSelectors();
+            updateTimeline();
+            if (selectedSegment) {
+                selectSegment(selectedSegment.id);
+            }
+        }
+        
+        function addTrack() {
+            setTrackCount(trackCount + 1);
+        }
+        
+        function removeTrack() {
+            if (trackCount <= 1) return;
+            trackCount -= 1;
+            annotations.forEach(ann => {
+                if (ann.track >= trackCount) {
+                    ann.track = trackCount - 1;
+                }
+            });
+            setTrackCount(trackCount);
+        }
+        
+        // Initialize tracks and selectors
+        setTrackCount(trackCount);
         
         // Initialize video
         video.addEventListener('loadedmetadata', () => {
@@ -1839,33 +1914,6 @@ HTML_TEMPLATE = """
             applyZoomPreservingView(previousZoom);
         }
         
-        function toggleSecondTrack() {
-            hasSecondTrack = !hasSecondTrack;
-            const track2 = document.querySelector('.timeline-track[data-track="1"]');
-            const track2Option = document.getElementById('track2Option');
-            const trackToggleBtn = document.getElementById('trackToggleBtn');
-            
-            if (hasSecondTrack) {
-                track2.style.display = 'block';
-                track2Option.style.display = 'block';
-                trackToggleBtn.textContent = 'Remove Track 2';
-            } else {
-                track2.style.display = 'none';
-                track2Option.style.display = 'none';
-                trackToggleBtn.textContent = 'Add Track 2';
-                
-                // Move all track 2 annotations to track 1
-                annotations.forEach(ann => {
-                    if (ann.track === 1) {
-                        ann.track = 0;
-                    }
-                });
-                renderSegments();
-            }
-            
-            updateTimeline();
-        }
-        
         // Segment management
         function showNewAnnotationDialog() {
             // Use last settings for convenience, but ensure form is editable
@@ -1874,6 +1922,8 @@ HTML_TEMPLATE = """
             document.getElementById('newTaskType').value = lastUsedSettings.task;
             document.getElementById('newDuration').value = lastUsedSettings.duration.toString();
             document.getElementById('newSeverity').value = lastUsedSettings.severity.toString();
+            refreshTrackSelectors(lastUsedSettings.track || 0);
+            document.getElementById('newTrack').value = Math.min(lastUsedSettings.track || 0, trackCount - 1).toString();
             
             // Ensure the select elements are not disabled and have all options
             const taskSelect = document.getElementById('newTaskType');
@@ -1892,14 +1942,16 @@ HTML_TEMPLATE = """
             const category = document.getElementById('newTaskCategory').value;
             const duration = parseFloat(document.getElementById('newDuration').value);
             const severity = parseInt(document.getElementById('newSeverity').value);
-            const track = parseInt(document.getElementById('newTrack').value);
+            const rawTrack = parseInt(document.getElementById('newTrack').value);
+            const track = Number.isNaN(rawTrack) ? 0 : Math.min(rawTrack, trackCount - 1);
             
             // Save settings for next time (convenience feature)
             lastUsedSettings = {
                 task: task,
                 category: category,
                 duration: duration,
-                severity: severity
+                severity: severity,
+                track: track
             };
             
             const start = video.currentTime;
@@ -2033,14 +2085,18 @@ HTML_TEMPLATE = """
                 
                 segment.style.left = (annotation.start * timelineZoom) + 'px';
                 
-                // Vertical movement - track switching (only if second track is visible)
-                if (hasSecondTrack && Math.abs(deltaY) > 30) {
-                    const newTrack = deltaY > 0 ? 1 : 0;
-                    if (newTrack !== annotation.track) {
+                // Vertical movement - track switching based on current pointer position
+                const tracks = Array.from(document.querySelectorAll('.timeline-track'));
+                const pointerY = e.clientY;
+                const targetTrackEl = tracks.find(trackEl => {
+                    const rect = trackEl.getBoundingClientRect();
+                    return pointerY >= rect.top && pointerY <= rect.bottom;
+                });
+                if (targetTrackEl) {
+                    const newTrack = parseInt(targetTrackEl.dataset.track);
+                    if (!Number.isNaN(newTrack) && newTrack !== annotation.track) {
                         annotation.track = newTrack;
-                        // Re-render to move to new track
                         renderSegments();
-                        // Re-select the segment after re-render
                         selectSegment(annotation.id);
                     }
                 }
@@ -2187,8 +2243,7 @@ HTML_TEMPLATE = """
                 <div class="property-group">
                     <div class="property-label">Track</div>
                     <select class="property-input" onchange="updateAnnotation(${annotation.id}, 'track', parseInt(this.value))">
-                        <option value="0" ${annotation.track === 0 ? 'selected' : ''}>Track 1</option>
-                        ${hasSecondTrack ? `<option value="1" ${annotation.track === 1 ? 'selected' : ''}>Track 2</option>` : ''}
+                        ${buildTrackOptionsHTML(annotation.track)}
                     </select>
                 </div>
                 
@@ -2215,6 +2270,12 @@ HTML_TEMPLATE = """
                 // Don't override track unless it doesn't exist
                 if (annotation.track === undefined) {
                     annotation.track = 0;
+                }
+                
+                if (field === 'track' && annotation.track >= trackCount) {
+                    setTrackCount(annotation.track + 1);
+                    selectSegment(id);
+                    return;
                 }
                 
                 renderSegments();
@@ -2304,8 +2365,15 @@ HTML_TEMPLATE = """
                     start: video.currentTime,
                     end: video.currentTime + (clipboard.end - clipboard.start)
                 };
+                if (newSegment.track === undefined) {
+                    newSegment.track = 0;
+                }
                 annotations.push(newSegment);
-                renderSegments();
+                if (newSegment.track >= trackCount) {
+                    setTrackCount(newSegment.track + 1);
+                } else {
+                    renderSegments();
+                }
                 selectSegment(newSegment.id);
             }
         }
@@ -2470,7 +2538,12 @@ HTML_TEMPLATE = """
         fetch('/get_annotations')
             .then(response => response.json())
             .then(data => {
-                annotations = data.annotations || [];
+                annotations = (data.annotations || []).map(ann => ({
+                    ...ann,
+                    track: ann.track === undefined ? 0 : ann.track
+                }));
+                const maxTrack = annotations.reduce((max, ann) => Math.max(max, ann.track || 0), 0);
+                setTrackCount(Math.max(trackCount, maxTrack + 1));
                 renderSegments();
             });
     </script>
