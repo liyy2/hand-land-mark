@@ -1238,16 +1238,17 @@ HTML_TEMPLATE = """
         /* Keyboard Shortcuts Modal */
         .shortcuts-modal {
             display: none;
-            position: fixed;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
+            position: absolute;
+            top: 50px;
+            right: 20px;
+            transform: none;
             background: #2d2d30;
             border: 1px solid #464647;
             border-radius: 8px;
-            padding: 20px;
-            max-width: 400px;
+            padding: 16px;
+            width: 260px;
             z-index: 1000;
+            box-shadow: 0 6px 20px rgba(0,0,0,0.4);
         }
         
         .shortcuts-modal h3 {
@@ -1293,7 +1294,7 @@ HTML_TEMPLATE = """
         <div style="width: 1px; height: 20px; background: #464647; margin-left: auto;"></div>
         <button class="toolbar-btn" onclick="saveProject()">💾 Save</button>
         <button class="toolbar-btn" onclick="loadProject()">📁 Open</button>
-        <button class="toolbar-btn" onclick="showShortcuts()">⌨️ Shortcuts</button>
+        <button class="toolbar-btn" id="shortcutsBtn" onclick="showShortcuts()">⌨️ Shortcuts</button>
     </div>
     
     <div class="main-container">
@@ -1402,6 +1403,18 @@ HTML_TEMPLATE = """
         <div class="shortcut-item">
             <span>Duplicate</span>
             <span class="shortcut-key">Cmd/Ctrl + D</span>
+        </div>
+        <div class="shortcut-item">
+            <span>Copy / Paste</span>
+            <span class="shortcut-key">Cmd/Ctrl + C / Cmd/Ctrl + V</span>
+        </div>
+        <div class="shortcut-item">
+            <span>Set Start @ Current</span>
+            <span class="shortcut-key">[</span>
+        </div>
+        <div class="shortcut-item">
+            <span>Set End @ Current</span>
+            <span class="shortcut-key">]</span>
         </div>
         <div class="shortcut-item">
             <span>Save Project</span>
@@ -2639,11 +2652,38 @@ HTML_TEMPLATE = """
         
         // Keyboard shortcuts
         function showShortcuts() {
-            document.getElementById('shortcutsModal').style.display = 'block';
+            const modal = document.getElementById('shortcutsModal');
+            const btn = document.getElementById('shortcutsBtn');
+            modal.style.display = 'block';
+            // Position near the button like a dropdown
+            if (btn) {
+                const rect = btn.getBoundingClientRect();
+                const modalRect = modal.getBoundingClientRect();
+                const scrollTop = window.scrollY || document.documentElement.scrollTop;
+                const scrollLeft = window.scrollX || document.documentElement.scrollLeft;
+                let left = rect.left + scrollLeft;
+                const top = rect.bottom + scrollTop + 6;
+                if (left + modalRect.width > window.innerWidth - 12) {
+                    left = window.innerWidth - modalRect.width - 12;
+                }
+                modal.style.top = `${top}px`;
+                modal.style.left = `${left}px`;
+            }
+            setTimeout(() => document.addEventListener('click', hideShortcutsOnOutside), 0);
         }
         
         function hideShortcuts() {
             document.getElementById('shortcutsModal').style.display = 'none';
+            document.removeEventListener('click', hideShortcutsOnOutside);
+        }
+        
+        function hideShortcutsOnOutside(e) {
+            const modal = document.getElementById('shortcutsModal');
+            const btn = document.getElementById('shortcutsBtn');
+            if (!modal || !btn) return;
+            if (!modal.contains(e.target) && e.target !== btn) {
+                hideShortcuts();
+            }
         }
         
         document.addEventListener('keydown', (e) => {
@@ -2679,6 +2719,18 @@ HTML_TEMPLATE = """
                     if (e.metaKey || e.ctrlKey) {
                         e.preventDefault();
                         pasteSegment();
+                    }
+                    break;
+                case '[':
+                    if (selectedSegment) {
+                        e.preventDefault();
+                        setStartToCurrentTime(selectedSegment.id);
+                    }
+                    break;
+                case ']':
+                    if (selectedSegment) {
+                        e.preventDefault();
+                        setEndToCurrentTime(selectedSegment.id);
                     }
                     break;
                 case 's':
