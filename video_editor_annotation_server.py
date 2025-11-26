@@ -1296,6 +1296,8 @@ HTML_TEMPLATE = """
         <button class="toolbar-btn" onclick="loadProject()">📁 Open</button>
         <button class="toolbar-btn" id="shortcutsBtn" onclick="showShortcuts()">⌨️ Shortcuts</button>
     </div>
+    <!-- Hidden file input for loading projects -->
+    <input type="file" id="projectFileInput" accept=".json,application/json" style="display: none;">
     
     <div class="main-container">
         <!-- Video Preview -->
@@ -2606,6 +2608,59 @@ HTML_TEMPLATE = """
             }
             // Redirect to upload page to start fresh
             window.location.href = '/';
+        }
+        
+        function loadProject() {
+            const input = document.getElementById('projectFileInput');
+            if (!input) return;
+            input.value = '';
+            input.click();
+        }
+        
+        const projectFileInput = document.getElementById('projectFileInput');
+        if (projectFileInput) {
+            projectFileInput.addEventListener('change', (e) => {
+                const file = e.target.files?.[0];
+                if (!file) return;
+                
+                const reader = new FileReader();
+                reader.onload = () => {
+                    try {
+                        const data = JSON.parse(reader.result || '{}');
+                        const loadedAnnotations = (data.annotations || []).map(ann => ({
+                            ...ann,
+                            track: ann.track === undefined ? 0 : ann.track
+                        }));
+                        const message = `Loaded ${loadedAnnotations.length} annotation(s).\n\nOK = Append to current\nCancel = Start fresh (replace current)`;
+                        const append = confirm(message);
+                        if (!append) {
+                            annotations = [];
+                            selectedSegment = null;
+                        }
+                        annotations = append ? annotations.concat(loadedAnnotations) : loadedAnnotations;
+                        
+                        // Update duration if provided; otherwise keep current
+                        if (data.videoDuration && !Number.isNaN(data.videoDuration)) {
+                            videoDuration = data.videoDuration;
+                        }
+                        
+                        // Ensure track count covers new annotations
+                        const maxTrack = annotations.reduce((max, ann) => Math.max(max, ann.track || 0), 0);
+                        setTrackCount(Math.max(trackCount, maxTrack + 1));
+                        
+                        // Re-render
+                        renderSegments();
+                        deselectAll();
+                        updateTimeline();
+                        showNotification(`Loaded ${loadedAnnotations.length} annotation(s)${append ? ' (appended)' : ''}.`);
+                    } catch (err) {
+                        alert('Failed to load project: ' + err.message);
+                    } finally {
+                        projectFileInput.value = '';
+                    }
+                };
+                reader.readAsText(file);
+            });
         }
         
         async function updateSoftware() {
