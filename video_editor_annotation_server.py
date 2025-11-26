@@ -166,53 +166,107 @@ UPLOAD_TEMPLATE = """
         }
         
         body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background: linear-gradient(135deg, #1e1e2e 0%, #151521 100%);
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: radial-gradient(120% 120% at 20% 20%, rgba(0,122,204,0.15), transparent),
+                        radial-gradient(80% 80% at 80% 0%, rgba(16,185,129,0.12), transparent),
+                        #0f1117;
             color: #e0e0e0;
             min-height: 100vh;
             display: flex;
             align-items: center;
             justify-content: center;
-            padding: 20px;
+            padding: 24px;
+            position: relative;
+            overflow: hidden;
         }
         
+        .glow {
+            position: absolute;
+            filter: blur(80px);
+            opacity: 0.45;
+            z-index: 0;
+        }
+        .glow.a { width: 380px; height: 380px; background: #1a86d3; top: -120px; left: -80px; }
+        .glow.b { width: 420px; height: 420px; background: #10b981; bottom: -140px; right: -120px; }
+        
         .upload-container {
-            max-width: 600px;
+            max-width: 680px;
             width: 100%;
-            background: #2a2a3e;
-            padding: 40px;
-            border-radius: 16px;
-            box-shadow: 0 16px 48px rgba(0,0,0,0.4);
+            background: rgba(35, 38, 53, 0.9);
+            padding: 38px;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.55), inset 0 1px 0 rgba(255,255,255,0.05);
+            border: 1px solid rgba(255,255,255,0.06);
+            backdrop-filter: blur(10px);
+            position: relative;
+            z-index: 1;
         }
         
         h1 {
             color: #ffffff;
-            margin-bottom: 10px;
-            font-size: 32px;
-            text-align: center;
+            margin-bottom: 6px;
+            font-size: 30px;
+            text-align: left;
+            letter-spacing: -0.02em;
         }
         
         .subtitle {
-            text-align: center;
-            color: #a0a0a0;
-            margin-bottom: 40px;
-            font-size: 14px;
+            text-align: left;
+            color: #c7c7d2;
+            margin-bottom: 22px;
+            font-size: 15px;
+        }
+        
+        .meta-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            margin-bottom: 18px;
+        }
+        
+        .pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 8px 12px;
+            border-radius: 999px;
+            background: rgba(0,122,204,0.18);
+            color: #9dcfff;
+            font-size: 12px;
+            letter-spacing: 0.3px;
+        }
+        
+        .pill span {
+            font-weight: 600;
+        }
+        
+        .guide-link {
+            color: #80c7ff;
+            text-decoration: none;
+            font-weight: 600;
+            font-size: 13px;
+        }
+        
+        .guide-link:hover {
+            text-decoration: underline;
         }
         
         .upload-area {
-            border: 3px dashed #007acc;
-            border-radius: 12px;
-            padding: 40px 20px;
+            border: 2px dashed rgba(128,199,255,0.6);
+            border-radius: 14px;
+            padding: 32px 20px;
             text-align: center;
             cursor: pointer;
             transition: all 0.3s ease;
-            background: #1a1a2e;
-            margin-bottom: 30px;
+            background: rgba(26,26,46,0.65);
+            margin-bottom: 24px;
         }
         
         .upload-area:hover {
             border-color: #1a86d3;
-            background: #222238;
+            background: rgba(34,34,56,0.8);
+            box-shadow: 0 0 0 1px rgba(26,134,211,0.3);
         }
         
         .upload-area.dragover {
@@ -226,10 +280,10 @@ UPLOAD_TEMPLATE = """
         }
         
         .upload-text {
-            font-size: 18px;
+            font-size: 19px;
             color: #e0e0e0;
             margin-bottom: 10px;
-        }
+            }
         
         .upload-hint {
             font-size: 13px;
@@ -242,7 +296,7 @@ UPLOAD_TEMPLATE = """
         
         .divider {
             text-align: center;
-            margin: 30px 0;
+            margin: 20px 0;
             position: relative;
         }
         
@@ -279,9 +333,9 @@ UPLOAD_TEMPLATE = """
         
         input[type="text"] {
             width: 100%;
-            padding: 12px 16px;
-            background: #1a1a2e;
-            border: 2px solid #3a3a4e;
+            padding: 14px 16px;
+            background: #12121b;
+            border: 1px solid #2f3041;
             color: #e0e0e0;
             border-radius: 8px;
             font-size: 14px;
@@ -298,20 +352,20 @@ UPLOAD_TEMPLATE = """
             width: 100%;
             padding: 14px 20px;
             font-size: 15px;
-            font-weight: 600;
+            font-weight: 700;
             border: none;
-            border-radius: 8px;
+            border-radius: 10px;
             cursor: pointer;
             transition: all 0.3s ease;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-            background: linear-gradient(135deg, #007acc 0%, #0056a3 100%);
-            color: white;
+            letter-spacing: 0.4px;
+            background: linear-gradient(120deg, #1a86d3 0%, #6dd3ff 100%);
+            color: #0a0c14;
+            box-shadow: 0 10px 30px rgba(26, 134, 211, 0.3);
         }
         
         button:hover:not(:disabled) {
-            transform: translateY(-2px);
-            box-shadow: 0 6px 20px rgba(0, 122, 204, 0.4);
+            transform: translateY(-1px);
+            box-shadow: 0 14px 32px rgba(26, 134, 211, 0.35);
         }
         
         button:disabled {
@@ -323,7 +377,7 @@ UPLOAD_TEMPLATE = """
             display: none;
             margin-top: 30px;
             padding: 20px;
-            background: #1a1a2e;
+            background: #141621;
             border-radius: 8px;
         }
         
@@ -481,6 +535,29 @@ UPLOAD_TEMPLATE = """
             margin-top: 16px;
             letter-spacing: 0.3px;
         }
+        
+        .feature-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+            gap: 10px;
+            margin: 14px 0 4px 0;
+        }
+        
+        .feature-chip {
+            background: rgba(255,255,255,0.04);
+            border: 1px solid rgba(255,255,255,0.06);
+            border-radius: 10px;
+            padding: 10px 12px;
+            font-size: 12px;
+            color: #c7c7d2;
+            display: flex;
+            gap: 8px;
+            align-items: center;
+        }
+        
+        .feature-chip span {
+            color: #80c7ff;
+        }
     </style>
 </head>
 <body>
@@ -495,11 +572,21 @@ UPLOAD_TEMPLATE = """
             ⬇️ Update Software
         </button>
     </div>
+    <div class="glow a"></div>
+    <div class="glow b"></div>
     <div class="upload-container">
+        <div class="meta-row">
+            <div class="pill">v <span>{{ git_version }}</span></div>
+            <a class="guide-link" href="/guide" target="_blank">📘 Open Full User Guide</a>
+        </div>
         <h1>📹 Video Annotation Editor</h1>
         <p class="subtitle">Upload a video or provide a path to begin timeline annotation</p>
-        <div style="text-align: center; margin-bottom: 10px;">
-            <a href="/guide" style="color: #80c7ff; text-decoration: underline;">Open Full User Guide</a>
+        
+        <div class="feature-grid">
+            <div class="feature-chip">🎬 <span>Upload</span> big videos with progress</div>
+            <div class="feature-chip">🧭 <span>Multi-track</span> timeline editing</div>
+            <div class="feature-chip">⚡ <span>Shortcuts</span> for speed</div>
+            <div class="feature-chip">💾 <span>Save/Load</span> with metadata</div>
         </div>
         
         
