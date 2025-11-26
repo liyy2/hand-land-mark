@@ -177,7 +177,7 @@ UPLOAD_TEMPLATE = """
             justify-content: center;
             padding: 24px;
             position: relative;
-            overflow: hidden;
+            overflow: auto;
         }
         
         .glow {
@@ -535,29 +535,6 @@ UPLOAD_TEMPLATE = """
             margin-top: 16px;
             letter-spacing: 0.3px;
         }
-        
-        .feature-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-            gap: 10px;
-            margin: 14px 0 4px 0;
-        }
-        
-        .feature-chip {
-            background: rgba(255,255,255,0.04);
-            border: 1px solid rgba(255,255,255,0.06);
-            border-radius: 10px;
-            padding: 10px 12px;
-            font-size: 12px;
-            color: #c7c7d2;
-            display: flex;
-            gap: 8px;
-            align-items: center;
-        }
-        
-        .feature-chip span {
-            color: #80c7ff;
-        }
     </style>
 </head>
 <body>
@@ -581,13 +558,6 @@ UPLOAD_TEMPLATE = """
         </div>
         <h1>📹 Video Annotation Editor</h1>
         <p class="subtitle">Upload a video or provide a path to begin timeline annotation</p>
-        
-        <div class="feature-grid">
-            <div class="feature-chip">🎬 <span>Upload</span> big videos with progress</div>
-            <div class="feature-chip">🧭 <span>Multi-track</span> timeline editing</div>
-            <div class="feature-chip">⚡ <span>Shortcuts</span> for speed</div>
-            <div class="feature-chip">💾 <span>Save/Load</span> with metadata</div>
-        </div>
         
         
         <div class="upload-area" id="uploadArea" onclick="document.getElementById('fileInput').click()">
