@@ -413,6 +413,17 @@ UPLOAD_TEMPLATE = """
         <h1>📹 Video Annotation Editor</h1>
         <p class="subtitle">Upload a video or provide a path to begin timeline annotation</p>
         
+        <details style="margin-top: 12px; margin-bottom: 20px; padding: 12px; background: rgba(255,255,255,0.03); border: 1px solid #3a3a4e; border-radius: 8px;">
+            <summary style="color: #e0e0e0; cursor: pointer; font-weight: 600;">📘 Quick Guide</summary>
+            <div style="margin-top: 10px; color: #a0a0a0; font-size: 13px; line-height: 1.6;">
+                <strong>Workflow:</strong> Upload a video → add annotations (M) → drag/resize on timeline → save (Cmd/Ctrl+S).<br>
+                <strong>Play/Pause:</strong> Space. <strong>Split:</strong> S. <strong>Copy/Paste:</strong> Cmd/Ctrl+C/V. <strong>Duplicate:</strong> Cmd/Ctrl+D.<br>
+                <strong>Trim to playhead:</strong> Start '[' / End ']'. <strong>Move tracks:</strong> Cmd/Ctrl+↑/↓. <strong>Open:</strong> Choose append or replace.<br>
+                <strong>Tracks:</strong> Add/Remove in timeline header; drag vertically to move clips; tracks auto-create when needed.<br>
+                <strong>Save:</strong> JSON includes annotations + video metadata; load warns if duration mismatches current video.
+            </div>
+        </details>
+        
         <div class="upload-area" id="uploadArea" onclick="document.getElementById('fileInput').click()">
             <div class="upload-icon">🎬</div>
             <div class="upload-text">Click to upload or drag & drop</div>
@@ -444,7 +455,7 @@ UPLOAD_TEMPLATE = """
         </div>
         
         <div id="statusMessage"></div>
-        <div class="version-note">Version: {{ git_version }}</div>
+        <div class="version-note">Version: {{ git_version }} · Need help? See Quick Guide above.</div>
     </div>
     
     <script>
