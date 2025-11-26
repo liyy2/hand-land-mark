@@ -762,8 +762,9 @@ HTML_TEMPLATE = """
         }
         
         video {
-            max-width: 100%;
-            max-height: 100%;
+            width: 100%;
+            height: 100%;
+            object-fit: contain; /* Scale to fit portrait/landscape while preserving aspect */
             background: #000;
         }
         
@@ -873,13 +874,15 @@ HTML_TEMPLATE = """
             right: 0;
             bottom: 0;
             overflow-x: auto;
-            overflow-y: hidden;
+            overflow-y: auto; /* Allow vertical scrolling when many tracks */
         }
         
         .timeline-content {
             position: relative;
-            height: 100%;
+            height: auto;      /* Grow with added tracks */
+            min-height: 100%;  /* But never smaller than viewport */
             min-width: 100%;
+            padding-bottom: 20px; /* Breathing room for bottom track */
         }
         
         /* Timeline Ruler */
@@ -2024,7 +2027,6 @@ HTML_TEMPLATE = """
             
             // Event handlers
             segment.addEventListener('mousedown', (e) => {
-                console.log('Segment mousedown:', annotation.id, annotation.task);
                 // Select immediately on mousedown for instant feedback
                 selectSegment(annotation.id);
                 
@@ -2036,7 +2038,6 @@ HTML_TEMPLATE = """
             });
             
             segment.addEventListener('click', (e) => {
-                console.log('Segment click:', annotation.id);
                 // Stop propagation to prevent deselection
                 e.stopPropagation();
             });
@@ -2056,6 +2057,8 @@ HTML_TEMPLATE = """
             const originalTrack = annotation.track;
             
             const segment = document.querySelector(`.timeline-segment[data-id="${annotation.id}"]`);
+            let pendingFrame = null;
+            let pendingLeft = segmentStartPos * timelineZoom;
             
             const handleDrag = (e) => {
                 const deltaX = e.clientX - dragStartX;
@@ -2082,8 +2085,13 @@ HTML_TEMPLATE = """
                 
                 annotation.start = newStart;
                 annotation.end = newStart + duration;
-                
-                segment.style.left = (annotation.start * timelineZoom) + 'px';
+                pendingLeft = annotation.start * timelineZoom;
+                if (!pendingFrame) {
+                    pendingFrame = requestAnimationFrame(() => {
+                        segment.style.left = pendingLeft + 'px';
+                        pendingFrame = null;
+                    });
+                }
                 
                 // Vertical movement - track switching based on current pointer position
                 const tracks = Array.from(document.querySelectorAll('.timeline-track'));
@@ -2096,8 +2104,11 @@ HTML_TEMPLATE = """
                     const newTrack = parseInt(targetTrackEl.dataset.track);
                     if (!Number.isNaN(newTrack) && newTrack !== annotation.track) {
                         annotation.track = newTrack;
-                        renderSegments();
-                        selectSegment(annotation.id);
+                        targetTrackEl.appendChild(segment);
+                        // Keep the segment marked as selected without full re-render
+                        segment.classList.add('selected');
+                        selectedSegment = annotation;
+                        updateProperties(annotation);
                     }
                 }
             };
@@ -2106,6 +2117,11 @@ HTML_TEMPLATE = """
                 if (hasStartedDragging) {
                     isDragging = false;
                     segment.classList.remove('dragging');
+                    if (pendingFrame) {
+                        cancelAnimationFrame(pendingFrame);
+                        pendingFrame = null;
+                        segment.style.left = (annotation.start * timelineZoom) + 'px';
+                    }
                     updateProperties(annotation);
                 }
                 // No need to select here since we already selected on mousedown
