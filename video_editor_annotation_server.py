@@ -451,16 +451,22 @@ UPLOAD_TEMPLATE = """
             right: 20px;
             display: flex;
             gap: 10px;
+            padding: 10px 12px;
+            background: rgba(20, 22, 33, 0.72);
+            border: 1px solid rgba(255,255,255,0.08);
+            border-radius: 14px;
+            backdrop-filter: blur(12px);
+            box-shadow: 0 10px 30px rgba(0,0,0,0.35);
             z-index: 5;
         }
         
         .top-controls button {
             width: auto;
-            padding: 10px 16px;
+            padding: 10px 14px;
             border-radius: 999px;
-            border: 1px solid rgba(255,255,255,0.14);
-            background: rgba(34,35,46,0.9);
-            color: #d9e6ff;
+            border: 1px solid rgba(255,255,255,0.1);
+            background: linear-gradient(135deg, rgba(255,255,255,0.08), rgba(255,255,255,0.02));
+            color: #f4f6ff;
             font-size: 12px;
             font-weight: 600;
             letter-spacing: 0.2px;
@@ -471,7 +477,7 @@ UPLOAD_TEMPLATE = """
         
         .top-controls button:hover:not(:disabled) {
             transform: translateY(-1px);
-            box-shadow: 0 10px 24px rgba(0,0,0,0.28);
+            box-shadow: 0 12px 26px rgba(0,0,0,0.32);
         }
         
         .feedback-btn {
