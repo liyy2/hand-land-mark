@@ -1256,6 +1256,21 @@ HTML_TEMPLATE = """
             color: #cccccc;
         }
         
+        .open-modal {
+            display: none;
+            position: absolute;
+            top: 50px;
+            right: 20px;
+            transform: none;
+            background: #2d2d30;
+            border: 1px solid #464647;
+            border-radius: 8px;
+            padding: 16px;
+            width: 280px;
+            z-index: 1000;
+            box-shadow: 0 6px 20px rgba(0,0,0,0.4);
+        }
+        
         .shortcut-item {
             display: flex;
             justify-content: space-between;
@@ -1293,7 +1308,7 @@ HTML_TEMPLATE = """
         <button class="toolbar-btn" onclick="deleteSelected()">🗑️ Delete</button>
         <div style="width: 1px; height: 20px; background: #464647; margin-left: auto;"></div>
         <button class="toolbar-btn" onclick="saveProject()">💾 Save</button>
-        <button class="toolbar-btn" onclick="loadProject()">📁 Open</button>
+        <button class="toolbar-btn" id="openBtn" onclick="showOpenMenu()">📁 Open</button>
         <button class="toolbar-btn" id="shortcutsBtn" onclick="showShortcuts()">⌨️ Shortcuts</button>
     </div>
     <!-- Hidden file input for loading projects -->
@@ -1381,6 +1396,9 @@ HTML_TEMPLATE = """
         <div class="context-menu-separator"></div>
         <div class="context-menu-item" onclick="setStartToCurrentTime(selectedSegment?.id)">Set Start @ Current</div>
         <div class="context-menu-item" onclick="setEndToCurrentTime(selectedSegment?.id)">Set End @ Current</div>
+        <div class="context-menu-separator"></div>
+        <div class="context-menu-item" onclick="moveSelectedToPrevTrack()">Move to Previous Track</div>
+        <div class="context-menu-item" onclick="moveSelectedToNextTrack()">Move to Next Track</div>
     </div>
     
     <!-- Shortcuts Modal -->
@@ -1419,10 +1437,34 @@ HTML_TEMPLATE = """
             <span class="shortcut-key">]</span>
         </div>
         <div class="shortcut-item">
+            <span>Move to Previous Track</span>
+            <span class="shortcut-key">Cmd/Ctrl + ↑</span>
+        </div>
+        <div class="shortcut-item">
+            <span>Move to Next Track</span>
+            <span class="shortcut-key">Cmd/Ctrl + ↓</span>
+        </div>
+        <div class="shortcut-item">
             <span>Save Project</span>
             <span class="shortcut-key">Cmd/Ctrl + S</span>
         </div>
         <button class="toolbar-btn" onclick="hideShortcuts()" style="margin-top: 15px; width: 100%;">Close</button>
+    </div>
+    
+    <!-- Open Project Dropdown -->
+    <div class="open-modal" id="openModal">
+        <h3 style="margin-bottom: 10px; color: #cccccc;">📁 Open Annotations</h3>
+        <div class="property-group" style="margin-bottom: 12px;">
+            <div class="property-label" style="margin-bottom: 6px;">Load Mode</div>
+            <select id="openModeSelect" class="property-input">
+                <option value="append">Append to current</option>
+                <option value="replace">Start fresh (replace)</option>
+            </select>
+        </div>
+        <div style="display: flex; gap: 8px;">
+            <button class="toolbar-btn" style="flex: 1; background: #007acc; color: white;" onclick="triggerProjectLoad()">Choose JSON...</button>
+            <button class="toolbar-btn" style="flex: 1;" onclick="hideOpenMenu()">Cancel</button>
+        </div>
     </div>
     
     <!-- Save Dialog -->
@@ -2431,6 +2473,31 @@ HTML_TEMPLATE = """
             selectSegment(id);
         }
         
+        function moveSelectedToNextTrack() {
+            if (!selectedSegment) return;
+            const nextTrack = selectedSegment.track + 1;
+            if (nextTrack >= trackCount) {
+                setTrackCount(nextTrack + 1);
+            }
+            selectedSegment.track = nextTrack;
+            renderSegments();
+            selectSegment(selectedSegment.id);
+            showNotification(`Moved to Track ${nextTrack + 1}`);
+        }
+        
+        function moveSelectedToPrevTrack() {
+            if (!selectedSegment) return;
+            const prevTrack = Math.max(0, selectedSegment.track - 1);
+            if (prevTrack === selectedSegment.track) {
+                showNotification('Already on top track');
+                return;
+            }
+            selectedSegment.track = prevTrack;
+            renderSegments();
+            selectSegment(selectedSegment.id);
+            showNotification(`Moved to Track ${prevTrack + 1}`);
+        }
+        
         function deleteSelected() {
             if (selectedSegment) {
                 annotations = annotations.filter(ann => ann.id !== selectedSegment.id);
@@ -2573,7 +2640,11 @@ HTML_TEMPLATE = """
                 annotations: annotations,
                 videoDuration: videoDuration,
                 timestamp: new Date().toISOString(),
-                video: '{{ original_video_path }}'
+                video: '{{ original_video_path }}',
+                metadata: {
+                    videoName: '{{ original_video_name }}',
+                    videoDurationSeconds: videoDuration
+                }
             };
             
             // Create blob and download
@@ -2610,10 +2681,48 @@ HTML_TEMPLATE = """
             window.location.href = '/';
         }
         
-        function loadProject() {
+        function showOpenMenu() {
+            const modal = document.getElementById('openModal');
+            const btn = document.getElementById('openBtn');
+            modal.style.display = 'block';
+            if (btn) {
+                const rect = btn.getBoundingClientRect();
+                const modalRect = modal.getBoundingClientRect();
+                const scrollTop = window.scrollY || document.documentElement.scrollTop;
+                const scrollLeft = window.scrollX || document.documentElement.scrollLeft;
+                let left = rect.left + scrollLeft;
+                const top = rect.bottom + scrollTop + 6;
+                if (left + modalRect.width > window.innerWidth - 12) {
+                    left = window.innerWidth - modalRect.width - 12;
+                }
+                modal.style.top = `${top}px`;
+                modal.style.left = `${left}px`;
+            }
+            setTimeout(() => document.addEventListener('click', hideOpenMenuOnOutside), 0);
+        }
+        
+        function hideOpenMenu() {
+            const modal = document.getElementById('openModal');
+            modal.style.display = 'none';
+            document.removeEventListener('click', hideOpenMenuOnOutside);
+        }
+        
+        function hideOpenMenuOnOutside(e) {
+            const modal = document.getElementById('openModal');
+            const btn = document.getElementById('openBtn');
+            if (!modal || !btn) return;
+            if (!modal.contains(e.target) && e.target !== btn) {
+                hideOpenMenu();
+            }
+        }
+        
+        function triggerProjectLoad() {
             const input = document.getElementById('projectFileInput');
-            if (!input) return;
+            const modeSelect = document.getElementById('openModeSelect');
+            if (!input || !modeSelect) return;
             input.value = '';
+            input.dataset.mode = modeSelect.value || 'append';
+            hideOpenMenu();
             input.click();
         }
         
@@ -2631,13 +2740,15 @@ HTML_TEMPLATE = """
                             ...ann,
                             track: ann.track === undefined ? 0 : ann.track
                         }));
-                        const message = `Loaded ${loadedAnnotations.length} annotation(s).\n\nOK = Append to current\nCancel = Start fresh (replace current)`;
-                        const append = confirm(message);
-                        if (!append) {
+                        
+                        const mode = projectFileInput.dataset.mode || 'append';
+                        if (mode === 'replace') {
                             annotations = [];
                             selectedSegment = null;
+                            annotations = loadedAnnotations;
+                        } else {
+                            annotations = annotations.concat(loadedAnnotations);
                         }
-                        annotations = append ? annotations.concat(loadedAnnotations) : loadedAnnotations;
                         
                         // Update duration if provided; otherwise keep current
                         if (data.videoDuration && !Number.isNaN(data.videoDuration)) {
@@ -2652,11 +2763,12 @@ HTML_TEMPLATE = """
                         renderSegments();
                         deselectAll();
                         updateTimeline();
-                        showNotification(`Loaded ${loadedAnnotations.length} annotation(s)${append ? ' (appended)' : ''}.`);
+                        showNotification(`Loaded ${loadedAnnotations.length} annotation(s)${mode === 'append' ? ' (appended)' : ' (replaced)'}.`);
                     } catch (err) {
                         alert('Failed to load project: ' + err.message);
                     } finally {
                         projectFileInput.value = '';
+                        delete projectFileInput.dataset.mode;
                     }
                 };
                 reader.readAsText(file);
@@ -2774,6 +2886,18 @@ HTML_TEMPLATE = """
                     if (e.metaKey || e.ctrlKey) {
                         e.preventDefault();
                         pasteSegment();
+                    }
+                    break;
+                case 'ArrowDown':
+                    if (e.metaKey || e.ctrlKey) {
+                        e.preventDefault();
+                        moveSelectedToNextTrack();
+                    }
+                    break;
+                case 'ArrowUp':
+                    if (e.metaKey || e.ctrlKey) {
+                        e.preventDefault();
+                        moveSelectedToPrevTrack();
                     }
                     break;
                 case '[':
