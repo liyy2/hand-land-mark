@@ -73,58 +73,67 @@ GUIDE_HTML = """
     <h1>Clinical Video Annotation Tool – Full Guide</h1>
     
     <div class="section">
-        <h2>Workflow</h2>
+        <h2>1) End-to-End Workflow</h2>
         <ul>
-            <li>Upload a video (or enter a path) on the front page and start processing.</li>
-            <li>Add annotations at the playhead, drag/resize them on the timeline, save to JSON.</li>
-            <li>Load JSON via Open (choose Append or Replace). Duration mismatches will warn you.</li>
+            <li><strong>Load video:</strong> Upload or enter a path on the landing page, wait for processing to finish, then open the editor.</li>
+            <li><strong>Annotate:</strong> Use “Add Annotation” (or press <code>M</code>) at the playhead; adjust on the timeline (drag/resize, move tracks).</li>
+            <li><strong>Organize:</strong> Add/remove tracks, drag segments vertically, and color-coding will keep tasks visually grouped.</li>
+            <li><strong>Review & trim:</strong> Scrub the playhead, split, and set start/end to the current time for precise alignment.</li>
+            <li><strong>Save:</strong> Download JSON (includes metadata: video name and duration). Use “Open” (Append/Replace) to load previous work; duration mismatch triggers a warning.</li>
         </ul>
     </div>
     
     <div class="section">
-        <h2>Timeline & Tracks</h2>
+        <h2>2) Timeline & Tracks</h2>
         <ul>
-            <li>Tracks are stacked; add/remove via timeline header or shortcuts. Drag vertically to move between tracks; new tracks auto-create as needed.</li>
-            <li>Color coding is deterministic per task; selected segments glow yellow (visible at time 0).</li>
-            <li>Zoom with +/- buttons; Fit to window; scroll horizontally/vertically when many tracks.</li>
+            <li><strong>Navigation:</strong> Scroll horizontally/vertically; zoom with +/-; “Fit” adjusts zoom to the video length.</li>
+            <li><strong>Tracks:</strong> Add/Remove in the timeline header. Dragging a segment vertically moves it; new tracks auto-create if you drop on a non-existent track.</li>
+            <li><strong>Visibility:</strong> Selection glow is bright yellow and visible even at time 0 (tracks allow overflow).</li>
+            <li><strong>Color coding:</strong> Deterministic per task, so identical tasks share the same hue across sessions.</li>
         </ul>
     </div>
     
     <div class="section">
-        <h2>Annotations</h2>
+        <h2>3) Working with Annotations</h2>
         <ul>
-            <li><strong>Create:</strong> “Add Annotation” or <code>M</code>; choose task/category, duration, severity, track.</li>
-            <li><strong>Move/Resize:</strong> Drag body to move; drag edges to trim; drag vertically to change track.</li>
-            <li><strong>Playhead trims:</strong> “Set Start @ Current” (<code>[</code>) and “Set End @ Current” (<code>]</code>) in properties or context menu.</li>
-            <li><strong>Context menu (right-click a segment):</strong> Cut/Copy/Paste, Delete, Split at Playhead, Set Start/End @ Current, Move to Previous/Next Track.</li>
+            <li><strong>Create:</strong> “Add Annotation” or <code>M</code>; choose task/category, duration, severity, and track. Default task ensures labels are never empty.</li>
+            <li><strong>Move/Resize:</strong> Grab the body (grab cursor) to move; drag edges to trim (snap in 0.1s steps). Drag vertically to change tracks.</li>
+            <li><strong>Precise trims:</strong> Use “Set Start @ Current” (<code>[</code>) and “Set End @ Current” (<code>]</code>) in Properties or context menu.</li>
+            <li><strong>Context menu (right-click):</strong> Cut/Copy/Paste, Delete, Split at Playhead, Set Start/End @ Current, Move to Previous/Next Track.</li>
         </ul>
     </div>
     
     <div class="section">
-        <h2>Saving & Loading</h2>
+        <h2>4) Saving & Loading</h2>
         <ul>
-            <li><strong>Save (💾 or Cmd/Ctrl+S):</strong> Downloads JSON with annotations and metadata (video name, duration seconds).</li>
-            <li><strong>Open:</strong> Click “Open,” pick Append or Replace, then choose a JSON. Track count auto-expands; duration mismatch prompts a warning.</li>
+            <li><strong>Save (💾 or Cmd/Ctrl+S):</strong> Downloads JSON with annotations plus <code>metadata.videoName</code> and <code>metadata.videoDurationSeconds</code>.</li>
+            <li><strong>Open:</strong> Click “Open,” select Append or Start Fresh (Replace), then pick a JSON. Tracks auto-expand to fit loaded annotations.</li>
+            <li><strong>Duration safety:</strong> If the loaded duration differs from the current video, you’ll see a warning so you can verify alignment.</li>
         </ul>
     </div>
     
     <div class="section">
-        <h2>Shortcuts</h2>
+        <h2>5) Keyboard Shortcuts</h2>
         <ul>
-            <li>Play/Pause <code>Space</code>; Split <code>S</code>; Add Annotation <code>M</code></li>
-            <li>Delete <code>Delete/Backspace</code>; Duplicate <code>Cmd/Ctrl+D</code>; Copy/Paste <code>Cmd/Ctrl+C/V</code></li>
-            <li>Trim to playhead <code>[</code> / <code>]</code></li>
-            <li>Move track up/down <code>Cmd/Ctrl+↑</code> / <code>Cmd/Ctrl+↓</code></li>
-            <li>Save <code>Cmd/Ctrl+S</code></li>
+            <li><strong>Play/Pause:</strong> <code>Space</code></li>
+            <li><strong>Add Annotation:</strong> <code>M</code></li>
+            <li><strong>Split at playhead:</strong> <code>S</code></li>
+            <li><strong>Delete:</strong> <code>Delete/Backspace</code></li>
+            <li><strong>Duplicate:</strong> <code>Cmd/Ctrl + D</code></li>
+            <li><strong>Copy/Paste:</strong> <code>Cmd/Ctrl + C / V</code></li>
+            <li><strong>Trim to playhead:</strong> <code>[</code> (start), <code>]</code> (end)</li>
+            <li><strong>Move tracks:</strong> <code>Cmd/Ctrl + ↑</code> (previous), <code>Cmd/Ctrl + ↓</code> (next)</li>
+            <li><strong>Save:</strong> <code>Cmd/Ctrl + S</code></li>
         </ul>
     </div>
     
     <div class="section">
-        <h2>Tips</h2>
+        <h2>6) Tips & Troubleshooting</h2>
         <ul>
-            <li>If dragging is tricky on a trackpad, start from the body (grab cursor); resize handles are widened.</li>
-            <li>Selection glow extends beyond track edges for visibility at time 0.</li>
-            <li>Context menu repositions to stay in view near edges.</li>
+            <li>If dragging feels jumpy on a trackpad, start from the segment body; resize handles are widened for easier grabs.</li>
+            <li>If you can’t see the context menu, it will reposition to stay in the viewport—try right-clicking near the segment center.</li>
+            <li>If a loaded project warns about duration mismatch, verify you opened the intended video; adjust annotations if needed.</li>
+            <li>Selection glow extends outside the track for visibility at the timeline start; tracks allow overflow.</li>
         </ul>
     </div>
 </body>
@@ -493,16 +502,6 @@ UPLOAD_TEMPLATE = """
             <a href="/guide" style="color: #80c7ff; text-decoration: underline;">Open Full User Guide</a>
         </div>
         
-        <details style="margin-top: 12px; margin-bottom: 20px; padding: 12px; background: rgba(255,255,255,0.03); border: 1px solid #3a3a4e; border-radius: 8px;">
-            <summary style="color: #e0e0e0; cursor: pointer; font-weight: 600;">📘 Quick Guide</summary>
-            <div style="margin-top: 10px; color: #a0a0a0; font-size: 13px; line-height: 1.6;">
-                <strong>Workflow:</strong> Upload a video → add annotations (M) → drag/resize on timeline → save (Cmd/Ctrl+S).<br>
-                <strong>Play/Pause:</strong> Space. <strong>Split:</strong> S. <strong>Copy/Paste:</strong> Cmd/Ctrl+C/V. <strong>Duplicate:</strong> Cmd/Ctrl+D.<br>
-                <strong>Trim to playhead:</strong> Start '[' / End ']'. <strong>Move tracks:</strong> Cmd/Ctrl+↑/↓. <strong>Open:</strong> Choose append or replace.<br>
-                <strong>Tracks:</strong> Add/Remove in timeline header; drag vertically to move clips; tracks auto-create when needed.<br>
-                <strong>Save:</strong> JSON includes annotations + video metadata; load warns if duration mismatches current video.
-            </div>
-        </details>
         
         <div class="upload-area" id="uploadArea" onclick="document.getElementById('fileInput').click()">
             <div class="upload-icon">🎬</div>
@@ -535,7 +534,7 @@ UPLOAD_TEMPLATE = """
         </div>
         
         <div id="statusMessage"></div>
-        <div class="version-note">Version: {{ git_version }} · Need help? See Quick Guide above.</div>
+        <div class="version-note">Version: {{ git_version }} · Need help? Open the full guide.</div>
     </div>
     
     <script>
