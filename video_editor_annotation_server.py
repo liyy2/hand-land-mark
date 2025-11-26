@@ -1003,8 +1003,10 @@ HTML_TEMPLATE = """
         }
         
         .timeline-segment.selected {
-            border-color: #ffc107;
-            box-shadow: 0 0 0 3px rgba(255, 193, 7, 0.3);
+            border-color: #ffeb3b;
+            box-shadow: 0 0 0 3px rgba(255, 235, 59, 0.8), 0 0 12px rgba(255, 235, 59, 0.6);
+            outline: 2px solid rgba(255, 235, 59, 0.9);
+            outline-offset: 1px;
             z-index: 20;
         }
         
