@@ -873,7 +873,10 @@ HTML_TEMPLATE = """
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
             background: #1e1e1e;
             color: #e0e0e0;
-            overflow-x: hidden;
+            height: 100vh;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
         }
         
         /* Top Toolbar */
@@ -921,7 +924,9 @@ HTML_TEMPLATE = """
         /* Main Layout */
         .main-container {
             display: flex;
-            height: calc(100vh - 50px);
+            flex: 1 1 auto;
+            min-height: 0;
+            min-width: 0;
         }
         
         /* Video Preview Section */
@@ -930,6 +935,8 @@ HTML_TEMPLATE = """
             background: #252526;
             display: flex;
             flex-direction: column;
+            min-width: 0;
+            min-height: 0;
         }
         
         .video-container {
@@ -939,6 +946,7 @@ HTML_TEMPLATE = """
             align-items: center;
             justify-content: center;
             background: #1e1e1e;
+            min-height: 0;
         }
         
         video {
@@ -1006,7 +1014,8 @@ HTML_TEMPLATE = """
         .timeline-section {
             background: #252526;
             border-top: 1px solid #3e3e42;
-            height: 300px;
+            flex: 0 0 300px;
+            min-height: 300px;
             display: flex;
             flex-direction: column;
             position: relative;
@@ -1273,6 +1282,7 @@ HTML_TEMPLATE = """
             border-left: 1px solid #3e3e42;
             display: flex;
             flex-direction: column;
+            min-height: 0;
         }
         
         .panel-header {
